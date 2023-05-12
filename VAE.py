@@ -5,7 +5,7 @@ from keras import backend as K
 from keras.layers import *
 from keras.optimizers import Adam
 from keras.losses import MeanSquaredError
-import numpy as np
+import numpy as np             
 import os
 import pickle as pkl
 from keras.datasets import mnist
