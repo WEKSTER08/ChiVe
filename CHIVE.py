@@ -68,6 +68,7 @@ class CHIVE:
     def add_rnn_layer(self, encoder_input, timing_signal):
         x = encoder_input
         # we have to update shape
+        #adding the clockwork RNN to 
         for i in range(len(timing_signal)):
             x = add_cwrnn_layer(timing_signal[i],x)
         return x
@@ -80,4 +81,6 @@ class CHIVE:
 
         x = cwrnn_layer(x)
         return x
+
+    
 
