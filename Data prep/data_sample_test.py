@@ -5,5 +5,5 @@
 
 from mat4py import loadmat
 
-data = loadmat('data/phn1.mat')
+data = loadmat('data/syl1.mat')
 print(data)
