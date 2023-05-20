@@ -82,5 +82,22 @@ class CHIVE:
         x = cwrnn_layer(x)
         return x
 
+    def _add_bottleneck(self, x):
+        self._shape_before_bottleneck = K.int_shape(x)[1:]
+        x = Flatten()(x)
+        self.mu = Dense(self.latent_space_dim, name="mu")(x)
+        self.log_variance = Dense(self.latent_space_dim, name="log_variance")(x)
+
+        # The gaussian sampling for the latent layer
+        def point_sample_from_normal_distro(args):
+            mu, log_variance = args
+            epsilon = K.random_normal(shape=K.shape(self.mu), mean=0.0, stddev=1.0)
+            sample_point = mu + K.exp(log_variance / 2) * epsilon
+            return sample_point
+
+        # The Lambda function helps us wrap a function into the graph of layers
+        x = Lambda(point_sample_from_normal_distro, name="encoder_output")([self.mu, self.log_variance])
+        return x
+
     
 
