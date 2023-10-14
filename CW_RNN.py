@@ -21,6 +21,7 @@ class ClockworkRNN(Layer):
     """
 
     def __init__(self, periods,
+                 input_shape,
                  units_per_period,
                  output_units,
                  output_activtion='linear',
@@ -177,14 +178,14 @@ class ClockworkRNN(Layer):
         return config
 
 
-if __name__ == "__main__":
-    model = Sequential()
-    model.add(ClockworkRNN(periods=[1, 2, 4, 8],
-                           units_per_period=8,
-                           input_shape=(None, 1),
-                           output_units=1))
-    model.compile(optimizer='adam', loss='mse')
+# if __name__ == "__main__":
+#     model = Sequential()
+#     model.add(ClockworkRNN(periods=[1, 2, 4, 8],
+#                            units_per_period=8,
+#                            input_shape=(None, 1),
+#                            output_units=1))
+#     model.compile(optimizer='adam', loss='mse')
 
-    model.summary()
-    config = model.get_config()
-    print(config)
+#     model.summary()
+#     config = model.get_config()
+#     print(config)
