@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 from sklearn.model_selection import train_test_split
+from torch.nn import functional as F
 from torch.nn.utils.rnn import pack_sequence, unpack_sequence
 from cwrnn_torch import ClockworkRNNLayer
 import random
@@ -44,15 +45,31 @@ class CHIVE(nn.Module):
             # self.phrnn_layer = ClockworkRNNLayer(input_size=phrnn_seq[t].size(),hidden_size=self.hidden_size,clock_val=phrnn_clock[t])
             h_phrnn = self.phrnn_layer(x=phrnn_seq[t],h_prev = h_phrnn,timestep= t, clock_val =phrnn_clock[t])
             # self.layers.append( h_phrnn)
-
+        
             if sample_freq[t] == 1:
+                # print(t)
                 syl_clock = torch.randint(2, self.hidden_size-2, (1,)).item()
-                sylrnn_inp[t] = sylrnn_inp[t].view(1)
-                print((h_frnn),(h_phrnn),(sylrnn_inp[t]))
-                syl_inp = torch.tensor([h_frnn,h_phrnn,sylrnn_inp[t]])
+                # sylrnn_inp[t] = sylrnn_inp[t].view(1)
+                
+                # syl_inp = [h_frnn,h_phrnn,sylrnn_inp[t]]
+                max_length = max((h_frnn.shape[1]), (h_phrnn.shape[1]), (sylrnn_inp[t].shape[1]))
+                # print("Lens-",(h_frnn.shape[1]), (h_phrnn.shape[1]), (sylrnn_inp[t].shape[1]))
+
+                h_frnn = F.pad(h_frnn, pad=(0, max_length - (h_frnn.shape[1])))
+                h_phrnn = F.pad(h_phrnn, pad=(0, max_length - (h_phrnn.shape[1])))
+                # sylrnn_inp[t] = F.pad(sylrnn_inp[t], pad=(0, max_length - (sylrnn_inp[t].shape[1])))
+                syl_pad = torch.tensor(np.zeros( max_length - (sylrnn_inp[t].shape[1])))
+                syl_inp = torch.cat((sylrnn_inp[t],syl_pad.unsqueeze(-1).t()), dim=1)
+                
+                # print((h_frnn),(h_phrnn),syl_inp)
+
+                syl_inp = syl_inp.to(torch.float32)
+
+                result_tensor = torch.stack([h_frnn, h_phrnn, syl_inp], dim=0)
+                # syl_inp = pad_sequence(syl_inp, batch_first=True, padding_value=0.0)
 
                 # self.sylrnn_layer = ClockworkRNNLayer(input_size=sylrnn_seq[t].size(),hidden_size=self.hidden_size,clock_val=sylrnn_clock[t])
-                h_sylrnn = self.sylrnn_layer(x= syl_inp,h_prev = h_sylrnn,timestep= freq_count, clock_val =syl_clock)
+                h_sylrnn = self.sylrnn_layer(x= result_tensor,h_prev = h_sylrnn,timestep= freq_count, clock_val =syl_clock)
                 # self.layers.append(h_sylrnn)
 
         return h_sylrnn
@@ -72,19 +89,20 @@ class CHIVE(nn.Module):
     def train(self, x_train, y_train, batch_size, num_epochs):
         frnn_train,frnn_clock, phrnn_train,phrnn_clock,sylrnn_train,seq_train = x_train
         # print(frnn_train)
-        frnn_train = frnn_train.to(torch.float32)
-        frnn_clock = frnn_clock.to(torch.float32)
-        phrnn_train = phrnn_train.to(torch.float32)
-        phrnn_clock = phrnn_clock.to(torch.float32)
-        sylrnn_train = sylrnn_train.to(torch.float32).unsqueeze(1)
-        seq_train = torch.tensor(seq_train,dtype=torch.float32)
+        frnn_train = frnn_train.to(torch.float32).requires_grad_(True)
+        frnn_clock = frnn_clock.to(torch.float32).requires_grad_(True)
+        phrnn_train = phrnn_train.to(torch.float32).requires_grad_(True)
+        phrnn_clock = phrnn_clock.to(torch.float32).requires_grad_(True)
+        sylrnn_train = sylrnn_train.to(torch.float32).requires_grad_(True)
+        seq_train = torch.tensor(seq_train,dtype=torch.float32).requires_grad_(True)
         # sylrnn_train = torch.tensor(sylrnn_train, dtype=torch.float32)
-        y_train = torch.tensor(y_train,dtype=torch.float32)
+        y_train = torch.tensor(y_train,dtype=torch.float32).requires_grad_(True)
 
         dataset = torch.utils.data.TensorDataset(frnn_train,frnn_clock, phrnn_train,phrnn_clock, sylrnn_train,seq_train, y_train)
         train_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
-
+        self.loss_function = nn.MSELoss()
         for epoch in range(num_epochs):
+            
             for data in train_loader:
                 frnn_batch,frnn_clock, phrnn_batch,phrnn_clock, sylrnn_batch,seq_batch, y_batch = data
                 self.optimizer.zero_grad()
@@ -92,6 +110,7 @@ class CHIVE(nn.Module):
                 loss = self.loss_function(output, y_batch)
                 loss.backward()
                 self.optimizer.step()
+            print("Epoch--",epoch+1,"| Loss --",loss.item())
 
 
 
@@ -103,7 +122,7 @@ if __name__ == "__main__":
     num_samples = 100
     frnn_sequence_length = 13
     phrnn_sequence_length = 3
-    sylrnn_sequence_length = 3
+    sylrnn_sequence_length = 32
     input_size = [frnn_sequence_length,phrnn_sequence_length,sylrnn_sequence_length]
     chive = CHIVE(latent_space_dim=1,input_size=input_size)
 
@@ -123,11 +142,11 @@ if __name__ == "__main__":
     sylrnn_val = torch.tensor(np.random.rand(int(num_samples - num_samples/2),1,1))
     seq_data = generate_non_repeating_subset(0,int(num_samples), int(num_samples/2))
     seq_timesteps = torch.zeros(num_samples)
-    sylrnn_data = torch.zeros(num_samples) 
+    sylrnn_data = torch.zeros_like(frnn_seq) 
     syl_seq_count = 0
     for i in range(len(seq_timesteps)):
         if i in seq_data:
-            sylrnn_data[i] = sylrnn_val[syl_seq_count] 
+            sylrnn_data[i] =  torch.tensor(np.random.rand(1,1, 13))
             seq_timesteps[i]=1
             syl_seq_count+=1
     # print(seq_timesteps)
