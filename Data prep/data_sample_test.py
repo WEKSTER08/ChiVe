@@ -4,29 +4,53 @@
 # print(mat)
 import os
 from mat4py import loadmat
+import pprint
 
 data = loadmat('data/phn1.mat')
 # print(data)
 
-# duration = []
-# sylStart = [0]
-# for i in range(len(data['spurtSylTimes'])):
-#     duration.append(data['spurtSylTimes'][i][1] - data['spurtSylTimes'][i][0])
-#     sylStart.append(data['spurtSylTimes'][i][0])
-# data['spurtSylTimes'] = duration
-# data['sylStart'] = sylStart
+def syl_data(data):
+    duration = []
+    sylStart = [0]
+    for i in range(len(data['spurtSylTimes'])):
+        duration.append(data['spurtSylTimes'][i][1] - data['spurtSylTimes'][i][0])
+        sylStart.append(data['spurtSylTimes'][i][0])
+    data['spurtSylTimes'] = duration
+    data['sylStart'] = sylStart
+    out = []
+    count=0
+    for i in range(500):
+        if data['sylStart'][count]*1000 == i:
+            count+=1
+            out.append(1)
+        else: out.append(0)
+    # print(out)
+    return data['spurtSyl']
 # print(data)
 
 
+def phn_data(data):
 
-duration = []
-phnStart = [0]
-for i in range(len(data['phnTimes'])):
-    duration.append(round(data['phnTimes'][i][1] - data['phnTimes'][i][0],2))
-    phnStart.append(data['phnTimes'][i][0])
-data['phnTimes'] = duration
-data['phnStart'] = phnStart
-print(data)
+    duration = []
+    phnStart = [0]
+    for i in range(len(data['phnTimes'])):
+        duration.append(round(data['phnTimes'][i][1] - data['phnTimes'][i][0],2))
+        phnStart.append(data['phnTimes'][i][0])
+    data['phnTimes'] = duration
+    data['phnStart'] = phnStart
+
+    out_ph = []
+    count_ph = 0
+
+    for i in range(500):
+        if data['phnStart'][count_ph]*1000 == i:
+            count_ph+=1
+
+        else:
+            out_ph.append(data['phnTimes'][count_ph-1]*1000)
+    print(out_ph)
+    return out_ph
+# print(data)
 # new = pd.DataFrame.from_dict(data)
 
 # print(new)
@@ -51,14 +75,14 @@ print(data)
 
 ## population phoneme duration
 
-out_ph = []
-count_ph = 0
 
-for i in range(500):
-    if data['phnStart'][count_ph]*1000 == i:
-        count_ph+=1
 
-    else:
-        out_ph.append(data['phnTimes'][count_ph-1]*1000)
+# print(out_ph)
+## To iterate over all the files
+files  = os.listdir("data/syl")
+outs = []
+for file in files:
+    data = loadmat("data/syl/"+file)
+    outs.append(syl_data(data))
 
-print(out_ph)
+pprint.pprint(outs)
