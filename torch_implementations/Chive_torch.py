@@ -50,18 +50,12 @@ class CHIVE(nn.Module):
             freq_count = 0
             # self.frnn_layer = ClockworkRNNLayer(input_size=frnn_seq[0].size(),hidden_size=self.hidden_size,clock_val=)
             for t in range(len(sample_freq)):
-                #Asynchronously adding frame_rate and phone rate rnn layers
+                ##Asynchronously adding frame_rate and phone rate rnn layers
                 h_frnn = self.frnn_layer(x=frnn_seq[t],h_prev = h_frnn,timestep= t, clock_val =frnn_clock[t])
-                # self.layers.append(h_frnn)
                 h_phrnn = self.phrnn_layer(x=phrnn_seq[t],h_prev = h_phrnn,timestep= t, clock_val =phrnn_clock[t])
-                # self.layers.append( h_phrnn)
-                # Passing the frame rate and phone rate rnn layers to the Syllable rate rnn layers along with linguistic features
+                ## Passing the frame rate and phone rate rnn layers to the Syllable rate rnn layers along with linguistic features
                 if sample_freq[t] == 1:
-                    # print(t)
                     syl_clock = torch.randint(2, self.hidden_size-2, (1,)).item()
-                    # sylrnn_inp[t] = sylrnn_inp[t].view(1)
-                    
-                    # syl_inp = [h_frnn,h_phrnn,sylrnn_inp[t]]
                     max_length = max((h_frnn.shape[1]), (h_phrnn.shape[1]), (sylrnn_inp[t].shape[1]))
                     # print("Lens-",(h_frnn.shape[1]), (h_phrnn.shape[1]), (sylrnn_inp[t].shape[1]))
 
@@ -72,12 +66,12 @@ class CHIVE(nn.Module):
                     syl_inp = torch.cat((sylrnn_inp[t],syl_pad.unsqueeze(-1).t()), dim=1)
                     syl_inp = syl_inp.to(torch.float32)
                     # result_tensor = torch.stack([h_frnn, h_phrnn, syl_inp], dim=0)
+                    ##Adding the frnn output value, phrnn output value and linguistic feature value
                     result_tensor = h_frnn+h_phrnn+syl_inp
-                    # print("result tesnor------",result_tensor.shape)
                     h_sylrnn = self.sylrnn_layer(x= result_tensor,h_prev = h_sylrnn,timestep= freq_count, clock_val =syl_clock)
                     yield h_sylrnn 
 
-        #define bottleneck representations
+        ##define bottleneck representations
         bottle_neck_representation = encoder(frnn_inp, phrnn_inp, sylrnn_inp,sample_freq)
         
         def decoder(bottle_neck_representation):
@@ -90,20 +84,27 @@ class CHIVE(nn.Module):
             for i,x_inp in enumerate(bottle_neck_representation):
                 timestep = i
                 # print(i)
+                ## syllable rate rnn;phone rate rnn; phone rate duration; syllable rate duration;phone rate rnn -> f0,c0
                 if i>0 and (sample_freq[i-1]==1 or h_sylrnn_dur==1):
-                    # print("HI")
+                    ##syllable rate rnn hidden state init
                     h_sylrnn_decd = torch.zeros(self.hidden_size)
+                    ##phone rate rnn hiddenstate init
                     h_phrnn_decd = torch.zeros(self.hidden_size)
-                    # print(x_inp.shape)
                     clock_decd = torch.randint(2, self.hidden_size-2, (1,)).item()
+                    ##syllable rate rnn
                     h_sylrnn_decd = self.sylrnn_layer(x = x_inp,h_prev= h_sylrnn_decd,timestep = timestep,clock_val=clock_decd)
                     # print("Shape of this tensor",h_sylrnn_decd.shape,"Shape of input tensor--",x_inp.shape)
+                    ##phone rate rnn
                     h_phrnn_decd = self.phrnn_decd(x = h_sylrnn_decd,h_prev = h_phrnn_decd,timestep=timestep,clock_val = clock_decd)
+                    ##phone rate duration
                     h_phrnn_dur = self.phrnn_dur(x =h_phrnn_decd,h_prev = h_phrnn_dur,timestep=timestep,clock_val = 1)
+                    ##syllable rate duration
                     h_sylrnn_dur=  self.sylrnn_dur(x = h_sylrnn_decd,h_prev = h_sylrnn_dur,timestep=timestep,clock_val = 1)
-                    # frnn_f_inp = torch.cat((h_sylrnn_decd,h_phrnn_decd),dim=0)
+
+                ##f0 values
                 h_frnn_f = self.frnn_f(x=h_phrnn_decd,h_prev=h_frnn_f,timestep=timestep,clock_val = 1)
                 clock_decd_c = torch.randint(2,10, (1,)).item()
+                ##co values
                 h_frnn_c = self.frnn_c(x = h_phrnn_decd,h_prev = h_frnn_c,timestep=timestep,clock_val=clock_decd_c)
 
             return h_frnn_f,h_frnn_c,h_phrnn_dur,h_sylrnn_dur

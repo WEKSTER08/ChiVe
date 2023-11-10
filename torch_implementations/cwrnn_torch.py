@@ -43,7 +43,7 @@ class ClockworkRNN(nn.Module):
         selfclock_val =clock_val
 
         # Create Clockwork RNN layers
-        self.layer = ClockworkRNNLayer(input_size, hidden_size, clock_val)
+        self.layer = ClockworkRNNLayer(input_size, hidden_size)
 
     def forward(self, x):
         # Initialize hidden state
@@ -60,14 +60,14 @@ class ClockworkRNN(nn.Module):
         return h
 
 # Generate sinusoidal dummy data
-def generate_sinusoidal_data(num_points, freq=1, amplitude=1):
-    t = torch.arange(0, num_points, 1)
-    x = amplitude * torch.sin(2 * torch.pi * freq * t / num_points)
-    return x
+# def generate_sinusoidal_data(num_points, freq=1, amplitude=1):
+#     t = torch.arange(0, num_points, 1)
+#     x = amplitude * torch.sin(2 * torch.pi * freq * t / num_points)
+#     return x
 
 # # Dummy data
 # input_size = 1
-# hidden_size = 5
+# hidden_size = 50
 # clockwork_intervals = [1, 2, 4, 8]  # Adjust as needed
 
 # model = ClockworkRNN(input_size, hidden_size, clockwork_intervals)
