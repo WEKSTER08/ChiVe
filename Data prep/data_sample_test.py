@@ -5,6 +5,10 @@
 import os
 from mat4py import loadmat
 import pprint
+import nltk
+from nltk.tokenize import word_tokenize
+nltk.download('punkt')
+import numpy as np
 
 data = loadmat('data/phn1.mat')
 # print(data)
@@ -85,19 +89,47 @@ for file in files:
     data = loadmat("data/syl/"+file)
     outs.append(syl_data(data))
 
-pprint.pprint(outs)
+# pprint.pprint(outs)
 
 ## read from text file and vectorize
 with open('data/transcript.txt', 'r', encoding='utf-8') as file:
     text = file.read()
+
+## Tokenize text 
+tokens = word_tokenize(text)
+print(tokens)
+
 # print(text[1])
 sentences = []
-words = ""
-for chars in text:
-    if chars != '\n':
-        words += chars
+words = []
+for chars in tokens:
+    if chars != '.':
+        words.append(chars)
     else:
         sentences.append(words)
-        words = ""
+        words = []
         continue
 print(sentences)
+
+## vectorizing sentences 
+from gensim.test.utils import common_texts
+from gensim.models import Word2Vec
+model = Word2Vec(sentences=sentences, vector_size=10, window=1, min_count=1, workers=4)
+model.save("word2vec.model")
+word2vec_model = model
+
+def get_vector(token):
+    try:
+        return word2vec_model.wv[token]
+    except KeyError:
+        # Handle the case when the token is not in the vocabulary
+        return np.zeros(word2vec_model.vector_size)
+vectors = []
+for token in tokens:
+    if token=='.':
+        print("hi") 
+        continue
+    else : vectors.append(get_vector(token))
+# vectors = [get_vector(token) for token in tokens]
+
+print(vectors[:10])
