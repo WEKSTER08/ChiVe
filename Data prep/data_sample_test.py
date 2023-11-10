@@ -86,3 +86,18 @@ for file in files:
     outs.append(syl_data(data))
 
 pprint.pprint(outs)
+
+## read from text file and vectorize
+with open('data/transcript.txt', 'r', encoding='utf-8') as file:
+    text = file.read()
+# print(text[1])
+sentences = []
+words = ""
+for chars in text:
+    if chars != '\n':
+        words += chars
+    else:
+        sentences.append(words)
+        words = ""
+        continue
+print(sentences)
