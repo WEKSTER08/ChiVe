@@ -5,7 +5,11 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from torch.nn import functional as F
 from torch.nn.utils.rnn import pack_sequence, unpack_sequence
-from cwrnn_torch import ClockworkRNNLayer
+from cwrnn_torch import ClockworkRNNLayer    
+import librosa
+import librosa.display
+import matplotlib.pyplot as plt
+import numpy as np
 import random
 
 class CHIVE(nn.Module):
@@ -208,9 +212,259 @@ if __name__ == "__main__":
     # print(len(frnn_seq),len(phrnn_seq),len(sylrnn_data),(seq_timesteps[99]),len(clock_frnn),len(clock_phrnn),len(sylrnn_val),len(seq_data))
 
 
+    ### Real data prep 
+
+
+    ## Frnn seq, Phrnn seq......................................................................................................
+    ## To equal the length of the f0 and c0 values by averaging
+    def average_reduce(input_list, target_length):
+        original_length = len(input_list)
+        dimension = len(input_list[0])  # Assuming all elements have the same dimensionality
+        step = original_length // target_length
+
+        reduced_list = [
+            np.mean(input_list[i:i+step], axis=0) for i in range(0, original_length, step)
+        ]
+
+        return reduced_list[:target_length]
+
+    def average_reduce_ph(input_list, target_length):
+        original_length = len(input_list)
+        dimension = len(input_list[0])  # Assuming all elements have the same dimensionality
+        step = original_length // target_length
+
+        reduced_list = [
+            np.mean(input_list[i]) for i in range(0, original_length, step)
+        ]
+        print(reduced_list[:10])
+
+        return reduced_list[:target_length]
+    # Load the audio file
+    # file_path = 'path/to/your/audio/file.wav'
+    def extract_f_c(data_path,ph):
+        y, sr = librosa.load(data_path,sr=16000,)
+
+        # Compute the short-time Fourier transform (STFT)
+        D = librosa.amplitude_to_db(librosa.stft(y), ref=np.max)
+
+        # Extract the frequency values
+        frequencies = librosa.fft_frequencies(sr=16000)
+
+        mfcc_val = librosa.feature.mfcc(y=y, n_mfcc = 12, sr=sr,hop_length= 10)
+        mfcc_val = mfcc_val.T
+        f0, voiced_flag, voiced_probs = librosa.pyin(y, sr = sr, fmin=librosa.note_to_hz('C1'), fmax=librosa.note_to_hz('C7'),frame_length= 20, hop_length= 10 )
+        
+        if ph ==1 : 
+            # print("ph")
+            reduced_mfcc = average_reduce_ph(mfcc_val,len(frequencies))
+        else: 
+            # print("No ph")
+            reduced_mfcc = average_reduce(mfcc_val,len(frequencies))
+        frnn_inp = []
+        for i,vals in enumerate(reduced_mfcc):
+            temp = []
+            frnn_inp.append([vals,frequencies[i]])
+        # print(reduced_mfcc[:5])
+        frequencies = frequencies.reshape(-1,1)
+        # frnn_inp = np.concatenate((reduced_mfcc,frequencies),axis =1)
+        return frnn_inp
+
+    f_c_inp = extract_f_c('../Data_prep/data/wav/ISLE_SESS0003_BLOCKD01_01_sprt1.wav',0)
+    f_cav_inp = extract_f_c('../Data_prep/data/wav/ISLE_SESS0003_BLOCKD01_01_sprt1.wav',1)
+    print(len(f_c_inp),len(f_cav_inp))
+
+    ## Phrnn dur, Sample_freq, Sylrnn inp ...................................................................................
+
+        # import scipy.io
+    # mat = scipy.io.loadmat('data/syl1.mat')
+    # import pandas as pd
+    # print(mat)
+    import os
+    from mat4py import loadmat
+    import pprint
+    import nltk
+    from nltk.tokenize import word_tokenize
+    nltk.download('punkt')
+    import numpy as np
+
+    
+    # print(data)
+
+    def syl_data(data,data_len):
+        duration = []
+        sylStart = []
+        for i in range(len(data['spurtSylTimes'])):
+            duration.append(round(data['spurtSylTimes'][i][1] - data['spurtSylTimes'][i][0],2))
+            sylStart.append(round(data['spurtSylTimes'][i][0],2))
+        data['spurtSylTimes'] = duration
+        data['sylStart'] = sylStart
+        out = []
+        count=0
+        factor = int(data_len/(sylStart[-1]*100))
+        cut_off = len(sylStart)
+        # print(factor)
+        for i in range(data_len):
+            if count >= cut_off : count -= 1
+            if int(data['sylStart'][count]*100*factor) == i:
+                count+=1
+                out.append(1)
+            else: out.append(0)
+        # print(data)
+        return out
+    # print(data)
+
+
+    def phn_data(data,data_len):
+
+        duration = []
+        phnStart = [0]
+        for i in range(len(data['phnTimes'])):
+            duration.append(round(data['phnTimes'][i][1] - data['phnTimes'][i][0],2))
+            phnStart.append(round(data['phnTimes'][i][0],2))
+        data['phnTimes'] = duration
+        data['phnStart'] = phnStart
+
+        out_ph = []
+        count_ph = 0
+        factor = int(data_len/(phnStart[-1]*100))
+        cut_off = len(phnStart)
+        # (print(cut_off))
+        # print(factor,phnStart[-1])
+        for i in range(data_len):
+            
+            if int(data['phnStart'][count_ph]*100*factor) == i:
+                # print(data['phnStart'][count_ph]*100*factor,i)
+                if(count_ph == cut_off-1) : 
+                    # print(i)
+                    out_ph.append(data['phnTimes'][count_ph-1]*1000)
+                    continue
+                else :
+                    count_ph+=1
+                    # print(i,data['phnTimes'][count_ph-1]*1000)
+                    out_ph.append(data['phnTimes'][count_ph-1]*1000)
+
+            else:
+                out_ph.append(data['phnTimes'][count_ph-1]*1000)
+                # print(i)
+        # print()
+        return out_ph
+    # print(data)
+    ## population phoneme duration
+
+    # print(out_ph)
+    ## To iterate over all the files
+    files  = os.listdir("../Data_prep/data/syl")
+    outs = []
+    data_len = len(f_c_inp)
+    for i,file in enumerate(files):
+        if i == 1: break
+        data = loadmat("../Data_prep/data/syl/"+file)
+        outs.append(syl_data(data,data_len))
+
+    # print(len(outs[0]))
+
+    files  = os.listdir("../Data_prep/data/phn")
+    outs_ph = []
+    data_len = len(f_c_inp)
+    for i,file in enumerate(files):
+        if i == 1: break
+        data = loadmat("../Data_prep/data/phn/"+file)
+        outs_ph.append(phn_data(data,data_len))
+
+    # print(len(outs_ph[0]))
+
+    ### Read from text file and vectorize
+    with open('../Data_prep/data/transcript.txt', 'r', encoding='utf-8') as file:
+        text = file.read()
+
+    ## Tokenize text 
+    tokens = word_tokenize(text)
+    # print(tokens)
+
+    # print(text[1])
+    sentences = []
+    words = []
+    for chars in tokens:
+        if chars != '.':
+            words.append(chars)
+        else:
+            sentences.append(words)
+            words = []
+            continue
+    # print(sentences)
+
+    ## vectorizing sentences 
+    from gensim.test.utils import common_texts
+    from gensim.models import Word2Vec
+    model = Word2Vec(sentences=sentences, vector_size=32, window=1, min_count=1, workers=4)
+    model.save("word2vec.model")
+    word2vec_model = model
+
+    def get_vector(token):
+        try:
+            return word2vec_model.wv[token]
+        except KeyError:
+            # Handle the case when the token is not in the vocabulary
+            return np.zeros(word2vec_model.vector_size)
+    vectors = []
+    for token in tokens:
+        if token=='.':
+            # print("hi") 
+            continue
+        else : vectors.append(get_vector(token))
+    # vectors = [get_vector(token) for token in tokens]
+
+    sentence_vectors = []
+    word_vecs = []
+    for i in range(len(sentences)):
+        for token in sentences[i]:
+            word_vecs.append(get_vector(token))
+        sentence_vectors.append(word_vecs)
+        word_vecs = []
+
+    # print(sentence_vectors[0])
+
+    def syl_val(vector,sample_freq,data_len):
+        zero_val = np.zeros(32)
+        out_vec= []
+        count = 0
+        # print(sample_freq[0])
+        # print(vector)
+        # print("hi")
+        for i in range(data_len):
+            if sample_freq[i] == 1:
+                # print(count)
+                if count == len(vector):
+                    out_vec.append(zero_val)
+                    continue
+                else:
+                    out_vec.append(vector[count])
+                    count +=1
+            else: out_vec.append(zero_val)
+        return out_vec
+
+
+    syl_v = syl_val(sentence_vectors[0],outs[0],data_len)
+    # print(len(syl_v))
+
+
+
+
+
+
+
+    print(len(f_c_inp),len(f_cav_inp),len(syl_v),len(outs_ph[0]),len(outs[0]))
+    num_samples = data_len
+    clock_frnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
+    clock_phrnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
+
+    frnn_seq = torch.tensor(f_c_inp)
+    phrnn_seq = torch.cat((f_cav_inp,outs_ph[0]),dim =1)
+    sylrnn_data = torch.tensor(syl_v)
+    seq_timesteps = torch.tensor(outs[0])
     dummy_targets = np.random.rand(num_samples,32)
     # model = MyModel()
     total_params = sum(p.numel() for p in chive.parameters())
     print(f"Number of parameters: {total_params}")
     # chive.summary()
-    chive.train(x_train=[frnn_seq,clock_frnn, phrnn_seq,clock_phrnn,sylrnn_data,seq_timesteps], y_train=dummy_targets, batch_size=16, num_epochs=20)
+    # chive.train(x_train=[frnn_seq,clock_frnn, phrnn_seq,clock_phrnn,sylrnn_data,seq_timesteps], y_train=dummy_targets, batch_size=16, num_epochs=20)

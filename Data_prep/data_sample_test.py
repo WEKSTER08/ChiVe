@@ -72,31 +72,7 @@ def phn_data(data,data_len):
     # print()
     return out_ph
 # print(data)
-# new = pd.DataFrame.from_dict(data)
-
-# print(new)
-
-# linguistic = ["phn","syl","wav"]
-# folder = os.listdir('data/phn')
-
-# print(folder)
-
-# for files in folder:
-#     # cur_folder = os.listdir(folder + "/")
-#     print(files)
-## populating sample frequency
-# out = []
-# count=0
-# for i in range(500):
-#     if data['sylStart'][count]*1000 == i:
-#         count+=1
-#         out.append(1)
-#     else: out.append(0)
-# print(out)
-
 ## population phoneme duration
-
-
 
 # print(out_ph)
 ## To iterate over all the files
