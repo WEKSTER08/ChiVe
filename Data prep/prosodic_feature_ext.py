@@ -57,5 +57,5 @@ def extract_f_c(data_path,ph):
     # frnn_inp = np.concatenate((reduced_mfcc,frequencies),axis =1)
     return frnn_inp
 
-f_c_inp = extract_f_c('data/wav/ISLE_SESS0003_BLOCKD01_03_sprt1.wav',1)
+f_c_inp = extract_f_c('data/wav/ISLE_SESS0003_BLOCKD01_03_sprt1.wav',0)
 print((f_c_inp[:10]))
