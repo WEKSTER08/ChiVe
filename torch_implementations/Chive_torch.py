@@ -60,18 +60,19 @@ class CHIVE(nn.Module):
                 ## Passing the frame rate and phone rate rnn layers to the Syllable rate rnn layers along with linguistic features
                 if sample_freq[t] == 1:
                     syl_clock = torch.randint(2, self.hidden_size-2, (1,)).item()
-                    max_length = max((h_frnn.shape[1]), (h_phrnn.shape[1]), (sylrnn_inp[t].shape[1]))
-                    # print("Lens-",(h_frnn.shape[1]), (h_phrnn.shape[1]), (sylrnn_inp[t].shape[1]))
+                    # print("Lens-",(h_frnn.shape), (h_phrnn.shape), (sylrnn_inp[t].shape))
+                    # max_length = max((h_frnn.shape[1]), (h_phrnn.shape[1]), (sylrnn_inp[t].shape[1]))
+                   
 
-                    h_frnn = F.pad(h_frnn, pad=(0, max_length - (h_frnn.shape[1])))
-                    h_phrnn = F.pad(h_phrnn, pad=(0, max_length - (h_phrnn.shape[1])))
-                    # sylrnn_inp[t] = F.pad(sylrnn_inp[t], pad=(0, max_length - (sylrnn_inp[t].shape[1])))
-                    syl_pad = torch.tensor(np.zeros( max_length - (sylrnn_inp[t].shape[1])))
-                    syl_inp = torch.cat((sylrnn_inp[t],syl_pad.unsqueeze(-1).t()), dim=1)
-                    syl_inp = syl_inp.to(torch.float32)
+                    # h_frnn = F.pad(h_frnn, pad=(0, max_length - (h_frnn.shape[1])))
+                    # h_phrnn = F.pad(h_phrnn, pad=(0, max_length - (h_phrnn.shape[1])))
+                    # # sylrnn_inp[t] = F.pad(sylrnn_inp[t], pad=(0, max_length - (sylrnn_inp[t].shape[1])))
+                    # syl_pad = torch.tensor(np.zeros( max_length - (sylrnn_inp[t].shape[1])))
+                    # syl_inp = torch.cat((sylrnn_inp[t],syl_pad.unsqueeze(-1).t()), dim=1)
+                    # syl_inp = syl_inp.to(torch.float32)
                     # result_tensor = torch.stack([h_frnn, h_phrnn, syl_inp], dim=0)
                     ##Adding the frnn output value, phrnn output value and linguistic feature value
-                    result_tensor = h_frnn+h_phrnn+syl_inp
+                    result_tensor = h_frnn+h_phrnn+sylrnn_inp[t]
                     h_sylrnn = self.sylrnn_layer(x= result_tensor,h_prev = h_sylrnn,timestep= freq_count, clock_val =syl_clock)
                     yield h_sylrnn 
 
@@ -146,24 +147,31 @@ class CHIVE(nn.Module):
         self.loss_function = nn.MSELoss()
         for epoch in range(num_epochs):
             
-            for data in train_loader:
+            for i,data in enumerate(train_loader):
                 frnn_batch,frnn_clock, phrnn_batch,phrnn_clock, sylrnn_batch,seq_batch, y_batch = data
-                frnn_c_batch, frnn_f_batch = torch.split(frnn_batch, [12, 1], dim=2)
-                _, phrnn_dur_batch = torch.split(phrnn_batch, [2,1], dim=2)
+                # print(frnn_batch.shape)
+                frnn_c_batch, frnn_f_batch = frnn_batch[:, :12],frnn_batch[:, 12:]
+                phrnn_dur_batch = phrnn_batch[:,2:]
+                # print(phrnn_dur_batch.shape,frnn_c_batch.shape, frnn_f_batch.shape)
                 # print("Shapes--",frnn_batch.shape,phrnn_batch.shape,seq_batch.shape)
                 self.optimizer.zero_grad()
-                for i in range(batch_size):
+                length = len(train_loader) -i
+                if length/batch_size >1 :  batch_len = batch_size
+                else: batch_len = length%batch_size
+                total_loss = torch.tensor(0, dtype=torch.float32, requires_grad=True)
+
+                for i in range(batch_len):
                     h_frnn_f,h_frnn_c,h_phrnn_dur,h_sylrnn_dur = self.forward([(frnn_batch,frnn_clock), (phrnn_batch,phrnn_clock), sylrnn_batch,seq_batch])
                     # print("shapes of outputs",h_frnn_c.view(12).shape,frnn_c_batch[i,:,:].view(12).shape)
                 # print(output.shape,y_batch.shape)
                 
 
-                    loss_f = self.loss_function(h_frnn_f.view(1),frnn_f_batch[i,:,:].view(1))
-                    loss_c = self.loss_function(h_frnn_c.view(12),frnn_c_batch[i,:,:].view(12))
-                    loss_ph_dur = self.loss_function(h_phrnn_dur.view(1),phrnn_dur_batch[i,:,:].view(1))
-                    loss_syl_dur = self.loss_function(h_sylrnn_dur.view(1),seq_batch[i].view(1))
-                    total_loss = (loss_c+loss_f+loss_ph_dur+loss_syl_dur)/4
-                total_loss = total_loss/batch_size
+                    loss_f = self.loss_function(h_frnn_f.view(1),frnn_f_batch[i].view(1)).requires_grad=True
+                    loss_c = self.loss_function(h_frnn_c.view(12),frnn_c_batch[i].view(12)).requires_grad=True
+                    loss_ph_dur = self.loss_function(h_phrnn_dur.view(1),phrnn_dur_batch[i].view(1)).requires_grad=True
+                    loss_syl_dur = self.loss_function(h_sylrnn_dur.view(1),seq_batch[i].view(1)).requires_grad=True
+                    total_loss += (loss_c+loss_f+loss_ph_dur+loss_syl_dur)/4
+                total_loss = total_loss/batch_len
                 total_loss.backward()
                 self.optimizer.step()
             print("Epoch--",epoch+1,"| Loss --",total_loss.item())
@@ -175,7 +183,7 @@ if __name__ == "__main__":
     
     # chive.summary()
 
-    num_samples = 64
+    # num_samples = 64
     frnn_sequence_length = 13
     phrnn_sequence_length = 3
     sylrnn_sequence_length = 32
@@ -191,21 +199,21 @@ if __name__ == "__main__":
         subset = numbers[:subset_size]
         return subset
 
-    frnn_seq = torch.tensor(np.random.rand(num_samples,1, 13))
-    clock_frnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
-    phrnn_seq = torch.tensor(np.random.rand(num_samples,1, 3))
-    clock_phrnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
-    sylrnn_val = torch.tensor(np.random.rand(int(num_samples - num_samples/2),1,1))
-    seq_data = generate_non_repeating_subset(0,int(num_samples), int(num_samples/2))
-    seq_timesteps = torch.zeros(num_samples)
-    sylrnn_data = torch.zeros_like(frnn_seq) 
-    syl_seq_count = 0
-    for i in range(len(seq_timesteps)):
-        if i in seq_data:
-            sylrnn_data[i] =  torch.tensor(np.random.rand(1,1, 13))
-            seq_timesteps[i]=torch.tensor(1)
-            syl_seq_count+=1
-        else: seq_timesteps[i]=torch.tensor(0)
+    # frnn_seq = torch.tensor(np.random.rand(num_samples,1, 13))
+    # clock_frnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
+    # phrnn_seq = torch.tensor(np.random.rand(num_samples,1, 3))
+    # clock_phrnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
+    # sylrnn_val = torch.tensor(np.random.rand(int(num_samples - num_samples/2),1,1))
+    # seq_data = generate_non_repeating_subset(0,int(num_samples), int(num_samples/2))
+    # seq_timesteps = torch.zeros(num_samples)
+    # sylrnn_data = torch.zeros_like(frnn_seq) 
+    # syl_seq_count = 0
+    # for i in range(len(seq_timesteps)):
+    #     if i in seq_data:
+    #         sylrnn_data[i] =  torch.tensor(np.random.rand(1,1, 13))
+    #         seq_timesteps[i]=torch.tensor(1)
+    #         syl_seq_count+=1
+    #     else: seq_timesteps[i]=torch.tensor(0)
     # print(seq_timesteps)
 
     # print(frnn_seq)
@@ -261,9 +269,10 @@ if __name__ == "__main__":
             # print("No ph")
             reduced_mfcc = average_reduce(mfcc_val,len(frequencies))
         frnn_inp = []
-        for i,vals in enumerate(reduced_mfcc):
-            temp = []
-            frnn_inp.append([vals,frequencies[i]])
+        for i in range(len(reduced_mfcc)):
+
+            frnn_inp.append(np.hstack((reduced_mfcc[i],frequencies[i])))
+            # frnn_inp.append([vals,frequencies[i]])
         # print(reduced_mfcc[:5])
         frequencies = frequencies.reshape(-1,1)
         # frnn_inp = np.concatenate((reduced_mfcc,frequencies),axis =1)
@@ -271,7 +280,7 @@ if __name__ == "__main__":
 
     f_c_inp = extract_f_c('../Data_prep/data/wav/ISLE_SESS0003_BLOCKD01_01_sprt1.wav',0)
     f_cav_inp = extract_f_c('../Data_prep/data/wav/ISLE_SESS0003_BLOCKD01_01_sprt1.wav',1)
-    print(len(f_c_inp),len(f_cav_inp))
+    print((f_c_inp[:10]),len(f_cav_inp))
 
     ## Phrnn dur, Sample_freq, Sylrnn inp ...................................................................................
 
@@ -457,9 +466,21 @@ if __name__ == "__main__":
     num_samples = data_len
     clock_frnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
     clock_phrnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
-
+    
+    # for i in f_c_inp: i = torch.tensor(i[0])
+    
+#     f_c_inp_t = [
+#     [torch.tensor(arr) if isinstance(arr, np.ndarray) else torch.tensor(arr) for arr in inner_list]
+#     for inner_list in f_c_inp
+# ]
+#     print(f_c_inp_t[:10])
     frnn_seq = torch.tensor(f_c_inp)
-    phrnn_seq = torch.cat((f_cav_inp,outs_ph[0]),dim =1)
+    phrnn_seq = []
+    for i in range(len(f_cav_inp)):
+        phrnn_seq.append(np.hstack((f_cav_inp[i],outs_ph[0][i])))
+    # phrnn_seq = np.concatenate((f_cav_inp,outs_ph[0]),axis =1)
+    print(phrnn_seq[:2])
+    phrnn_seq = torch.tensor(phrnn_seq)
     sylrnn_data = torch.tensor(syl_v)
     seq_timesteps = torch.tensor(outs[0])
     dummy_targets = np.random.rand(num_samples,32)
@@ -467,4 +488,4 @@ if __name__ == "__main__":
     total_params = sum(p.numel() for p in chive.parameters())
     print(f"Number of parameters: {total_params}")
     # chive.summary()
-    # chive.train(x_train=[frnn_seq,clock_frnn, phrnn_seq,clock_phrnn,sylrnn_data,seq_timesteps], y_train=dummy_targets, batch_size=16, num_epochs=20)
+    chive.train(x_train=[frnn_seq,clock_frnn, phrnn_seq,clock_phrnn,sylrnn_data,seq_timesteps], y_train=dummy_targets, batch_size=16, num_epochs=16)
