@@ -4,6 +4,7 @@ import torch.optim as optim
 import numpy as np
 from sklearn.model_selection import train_test_split
 from torch.nn import functional as F
+from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_sequence, unpack_sequence
 from cwrnn_torch import ClockworkRNNLayer    
 import librosa
@@ -56,6 +57,8 @@ class CHIVE(nn.Module):
             for t in range(len(sample_freq)):
                 ##Asynchronously adding frame_rate and phone rate rnn layers
                 h_frnn = self.frnn_layer(x=frnn_seq[t],h_prev = h_frnn,timestep= t, clock_val =frnn_clock[t])
+                h_frnn = self.frnn_layer(x=frnn_seq[t],h_prev = h_frnn,timestep= t, clock_val =frnn_clock[t])
+                h_phrnn = self.phrnn_layer(x=phrnn_seq[t],h_prev = h_phrnn,timestep= t, clock_val =phrnn_clock[t])
                 h_phrnn = self.phrnn_layer(x=phrnn_seq[t],h_prev = h_phrnn,timestep= t, clock_val =phrnn_clock[t])
                 ## Passing the frame rate and phone rate rnn layers to the Syllable rate rnn layers along with linguistic features
                 if sample_freq[t] == 1:
@@ -158,18 +161,18 @@ class CHIVE(nn.Module):
                 length = len(train_loader) -i
                 if length/batch_size >1 :  batch_len = batch_size
                 else: batch_len = length%batch_size
-                total_loss = torch.tensor(0, dtype=torch.float32, requires_grad=True)
-
+                total_loss = Variable(torch.zeros(1), requires_grad=True)
                 for i in range(batch_len):
                     h_frnn_f,h_frnn_c,h_phrnn_dur,h_sylrnn_dur = self.forward([(frnn_batch,frnn_clock), (phrnn_batch,phrnn_clock), sylrnn_batch,seq_batch])
                     # print("shapes of outputs",h_frnn_c.view(12).shape,frnn_c_batch[i,:,:].view(12).shape)
                 # print(output.shape,y_batch.shape)
                 
 
-                    loss_f = self.loss_function(h_frnn_f.view(1),frnn_f_batch[i].view(1)).requires_grad=True
-                    loss_c = self.loss_function(h_frnn_c.view(12),frnn_c_batch[i].view(12)).requires_grad=True
-                    loss_ph_dur = self.loss_function(h_phrnn_dur.view(1),phrnn_dur_batch[i].view(1)).requires_grad=True
-                    loss_syl_dur = self.loss_function(h_sylrnn_dur.view(1),seq_batch[i].view(1)).requires_grad=True
+                    loss_f = self.loss_function(h_frnn_f.view(1),frnn_f_batch[i].view(1))
+                    loss_c = self.loss_function(h_frnn_c.view(12),frnn_c_batch[i].view(12))
+                    loss_ph_dur = self.loss_function(h_phrnn_dur.view(1),phrnn_dur_batch[i].view(1))
+                    loss_syl_dur = self.loss_function(h_sylrnn_dur.view(1),seq_batch[i].view(1))
+                    total_loss = total_loss.clone()
                     total_loss += (loss_c+loss_f+loss_ph_dur+loss_syl_dur)/4
                 total_loss = total_loss/batch_len
                 total_loss.backward()
