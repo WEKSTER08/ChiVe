@@ -12,6 +12,13 @@ import librosa.display
 import matplotlib.pyplot as plt
 import numpy as np
 import random
+import os
+from mat4py import loadmat
+import pprint
+import nltk
+from nltk.tokenize import word_tokenize
+nltk.download('punkt')
+import numpy as np
 
 class CHIVE(nn.Module):
     def __init__(self, latent_space_dim,input_size):
@@ -155,6 +162,7 @@ class CHIVE(nn.Module):
                 # print(frnn_batch.shape)
                 frnn_c_batch, frnn_f_batch = frnn_batch[:, :12],frnn_batch[:, 12:]
                 phrnn_dur_batch = phrnn_batch[:,2:]
+                # print
                 # print(phrnn_dur_batch.shape,frnn_c_batch.shape, frnn_f_batch.shape)
                 # print("Shapes--",frnn_batch.shape,phrnn_batch.shape,seq_batch.shape)
                 self.optimizer.zero_grad()
@@ -247,7 +255,7 @@ if __name__ == "__main__":
         reduced_list = [
             np.mean(input_list[i]) for i in range(0, original_length, step)
         ]
-        print(reduced_list[:10])
+        # print(reduced_list[:10])
 
         return reduced_list[:target_length]
     # Load the audio file
@@ -281,9 +289,28 @@ if __name__ == "__main__":
         # frnn_inp = np.concatenate((reduced_mfcc,frequencies),axis =1)
         return frnn_inp
 
-    f_c_inp = extract_f_c('../Data_prep/data/wav/ISLE_SESS0003_BLOCKD01_01_sprt1.wav',0)
-    f_cav_inp = extract_f_c('../Data_prep/data/wav/ISLE_SESS0003_BLOCKD01_01_sprt1.wav',1)
-    print((f_c_inp[:10]),len(f_cav_inp))
+    files  = os.listdir("../Data_prep/data/wav")
+    f_c_inp  = []
+    f_cav_inp  = []
+    
+    
+    for i,file in enumerate(files):
+        # if i == 1: break
+        print(i)
+        f_c_inp.append(extract_f_c("../Data_prep/data/wav/"+file,0))
+        f_cav_inp.append(extract_f_c("../Data_prep/data/wav/"+file,1))
+        
+    f_c_inp_np = np.array(f_c_inp)
+    reshaped_arr = f_c_inp_np.reshape((f_c_inp_np.shape[0] * f_c_inp_np.shape[1],f_c_inp_np.shape[2] ))
+    f_c_inp = reshaped_arr.tolist()
+    
+    f_cav_inp_np = np.array(f_cav_inp)
+    reshaped_arr = f_cav_inp_np.reshape((f_cav_inp_np.shape[0] * f_cav_inp_np.shape[1],f_cav_inp_np.shape[2] ))
+    f_cav_inp = reshaped_arr.tolist()
+    # f_c_inp = extract_f_c('../Data_prep/data/wav/ISLE_SESS0003_BLOCKD01_01_sprt1.wav',0)
+    # f_cav_inp = extract_f_c('../Data_prep/data/wav/ISLE_SESS0003_BLOCKD01_01_sprt1.wav',1)
+    print(len(f_c_inp),len(f_cav_inp))
+    data_len = len(f_c_inp)
 
     ## Phrnn dur, Sample_freq, Sylrnn inp ...................................................................................
 
@@ -291,13 +318,7 @@ if __name__ == "__main__":
     # mat = scipy.io.loadmat('data/syl1.mat')
     # import pandas as pd
     # print(mat)
-    import os
-    from mat4py import loadmat
-    import pprint
-    import nltk
-    from nltk.tokenize import word_tokenize
-    nltk.download('punkt')
-    import numpy as np
+  
 
     
     # print(data)
@@ -305,6 +326,7 @@ if __name__ == "__main__":
     def syl_data(data,data_len):
         duration = []
         sylStart = []
+        
         for i in range(len(data['spurtSylTimes'])):
             duration.append(round(data['spurtSylTimes'][i][1] - data['spurtSylTimes'][i][0],2))
             sylStart.append(round(data['spurtSylTimes'][i][0],2))
@@ -329,7 +351,8 @@ if __name__ == "__main__":
     def phn_data(data,data_len):
 
         duration = []
-        phnStart = [0]
+        phnStart = []
+        # print(data)
         for i in range(len(data['phnTimes'])):
             duration.append(round(data['phnTimes'][i][1] - data['phnTimes'][i][0],2))
             phnStart.append(round(data['phnTimes'][i][0],2))
@@ -342,6 +365,7 @@ if __name__ == "__main__":
         cut_off = len(phnStart)
         # (print(cut_off))
         # print(factor,phnStart[-1])
+        ## The factor helps relation between milliseconds and len of elements in the f0, c0
         for i in range(data_len):
             
             if int(data['phnStart'][count_ph]*100*factor) == i:
@@ -358,7 +382,7 @@ if __name__ == "__main__":
             else:
                 out_ph.append(data['phnTimes'][count_ph-1]*1000)
                 # print(i)
-        # print()
+        
         return out_ph
     # print(data)
     ## population phoneme duration
@@ -367,23 +391,32 @@ if __name__ == "__main__":
     ## To iterate over all the files
     files  = os.listdir("../Data_prep/data/syl")
     outs = []
-    data_len = len(f_c_inp)
+    data_len = 1025
     for i,file in enumerate(files):
-        if i == 1: break
+        # if i == 1: break
         data = loadmat("../Data_prep/data/syl/"+file)
         outs.append(syl_data(data,data_len))
 
-    # print(len(outs[0]))
+    # print(outs)
+ 
+
+    # print(len(outs))
 
     files  = os.listdir("../Data_prep/data/phn")
     outs_ph = []
-    data_len = len(f_c_inp)
+    data_len = 1025
     for i,file in enumerate(files):
-        if i == 1: break
+        # if i == 1: break
+        # print(file)
         data = loadmat("../Data_prep/data/phn/"+file)
         outs_ph.append(phn_data(data,data_len))
-
-    # print(len(outs_ph[0]))
+    # outs_ph = outs_ph.reshape(len(outs_ph)*len(outs_ph[0]),len(outs_ph[0][0]))
+    # Make it an array first to reshape
+    # print(outs_ph)
+    outs_ph_np = np.array(outs_ph)
+    reshaped_arr = outs_ph_np.reshape((outs_ph_np.shape[0] * outs_ph_np.shape[1], 1))
+    outs_ph = reshaped_arr.tolist()
+    print(len(outs_ph))
 
     ### Read from text file and vectorize
     with open('../Data_prep/data/transcript.txt', 'r', encoding='utf-8') as file:
@@ -454,19 +487,27 @@ if __name__ == "__main__":
                     count +=1
             else: out_vec.append(zero_val)
         return out_vec
+    syl_v = []
+    for i in range(len(outs)):
+        syl_v.append(syl_val(sentence_vectors[i], outs[i], data_len))
+    print(len(syl_v))
+
+    syl_v_np = np.array(syl_v)
+    reshaped_arr = syl_v_np.reshape((syl_v_np.shape[0] * syl_v_np.shape[1], syl_v_np.shape[2]))
+    syl_v = reshaped_arr.tolist()
+    print("syl_v -- ",len(syl_v))
+
+    outs_np = np.array(outs)
+    reshaped_arr = outs_np.reshape((outs_np.shape[0] * outs_np.shape[1], 1))
+    outs = reshaped_arr.tolist()
+    print("Outs -- ",len(outs))
 
 
-    syl_v = syl_val(sentence_vectors[0],outs[0],data_len)
-    # print(len(syl_v))
 
 
 
-
-
-
-
-    print(len(f_c_inp),len(f_cav_inp),len(syl_v),len(outs_ph[0]),len(outs[0]))
-    num_samples = data_len
+    print(len(f_c_inp),len(f_cav_inp),len(syl_v),len(outs_ph),len(outs))
+    num_samples = 14350
     clock_frnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
     clock_phrnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
     
@@ -480,12 +521,12 @@ if __name__ == "__main__":
     frnn_seq = torch.tensor(f_c_inp)
     phrnn_seq = []
     for i in range(len(f_cav_inp)):
-        phrnn_seq.append(np.hstack((f_cav_inp[i],outs_ph[0][i])))
+        phrnn_seq.append(np.hstack((f_cav_inp[i],outs_ph[i])))
     # phrnn_seq = np.concatenate((f_cav_inp,outs_ph[0]),axis =1)
     print(phrnn_seq[:2])
     phrnn_seq = torch.tensor(phrnn_seq)
     sylrnn_data = torch.tensor(syl_v)
-    seq_timesteps = torch.tensor(outs[0])
+    seq_timesteps = torch.tensor(outs)
     dummy_targets = np.random.rand(num_samples,32)
     # model = MyModel()
     total_params = sum(p.numel() for p in chive.parameters())
