@@ -27,8 +27,10 @@ class CHIVE(nn.Module):
         self.layers = nn.ModuleList()
         
         self.hidden_size = 32
-        self.frnn_layer =  ClockworkRNNLayer(input_size[0], hidden_size= self.hidden_size)
-        self.phrnn_layer =  ClockworkRNNLayer(input_size[1], hidden_size= self.hidden_size)
+        self.frnn_layer0 =  ClockworkRNNLayer(input_size[0], hidden_size= self.hidden_size)
+        self.frnn_layer1 =  ClockworkRNNLayer(self.hidden_size, hidden_size= self.hidden_size)
+        self.phrnn_layer0 =  ClockworkRNNLayer(input_size[1], hidden_size= self.hidden_size)
+        self.phrnn_layer1 =  ClockworkRNNLayer(self.hidden_size, hidden_size= self.hidden_size)
         self.sylrnn_layer =  ClockworkRNNLayer(input_size[2], hidden_size =self.hidden_size)
         self.phrnn_decd = ClockworkRNNLayer(self.hidden_size, hidden_size =self.hidden_size)
         self.phrnn_dur = ClockworkRNNLayer(self.hidden_size, hidden_size =1)
@@ -40,7 +42,7 @@ class CHIVE(nn.Module):
 
         self.bottle_neck_representation = None
         # print(self.parameters)
-        self.optimizer = optim.Adam(self.parameters(), lr=0.001)
+        self.optimizer = optim.Adam(self.parameters(), lr=0.0001)
         
 
     def forward(self, x):
@@ -52,21 +54,23 @@ class CHIVE(nn.Module):
             frnn_seq = frnn_inp[0]
             frnn_clock = frnn_inp[1]
             h_frnn = torch.zeros(self.hidden_size)
+            h_frnn0 = torch.zeros(self.hidden_size)
 
             #phone rate rnn initialisation
             phrnn_seq = phrnn_inp[0]
             phrnn_clock = phrnn_inp[1]
             h_phrnn = torch.zeros(self.hidden_size)
+            h_phrnn0 = torch.zeros(self.hidden_size)
 
             h_sylrnn = torch.zeros(self.hidden_size)
             freq_count = 0
             # self.frnn_layer = ClockworkRNNLayer(input_size=frnn_seq[0].size(),hidden_size=self.hidden_size,clock_val=)
             for t in range(len(sample_freq)):
                 ##Asynchronously adding frame_rate and phone rate rnn layers
-                h_frnn = self.frnn_layer(x=frnn_seq[t],h_prev = h_frnn,timestep= t, clock_val =frnn_clock[t])
-                h_frnn = self.frnn_layer(x=frnn_seq[t],h_prev = h_frnn,timestep= t, clock_val =frnn_clock[t])
-                h_phrnn = self.phrnn_layer(x=phrnn_seq[t],h_prev = h_phrnn,timestep= t, clock_val =phrnn_clock[t])
-                h_phrnn = self.phrnn_layer(x=phrnn_seq[t],h_prev = h_phrnn,timestep= t, clock_val =phrnn_clock[t])
+                h_frnn0 = self.frnn_layer0(x=frnn_seq[t],h_prev = h_frnn0,timestep= t, clock_val =frnn_clock[t])
+                h_frnn = self.frnn_layer1(x=h_frnn0,h_prev = h_frnn,timestep= t, clock_val =frnn_clock[t])
+                h_phrnn0 = self.phrnn_layer0(x=phrnn_seq[t],h_prev = h_phrnn0,timestep= t, clock_val =phrnn_clock[t])
+                h_phrnn = self.phrnn_layer1(x=h_phrnn0,h_prev = h_phrnn,timestep= t, clock_val =phrnn_clock[t])
                 ## Passing the frame rate and phone rate rnn layers to the Syllable rate rnn layers along with linguistic features
                 if sample_freq[t] == 1:
                     syl_clock = torch.randint(2, self.hidden_size-2, (1,)).item()
@@ -309,7 +313,7 @@ if __name__ == "__main__":
     f_cav_inp = reshaped_arr.tolist()
     # f_c_inp = extract_f_c('../Data_prep/data/wav/ISLE_SESS0003_BLOCKD01_01_sprt1.wav',0)
     # f_cav_inp = extract_f_c('../Data_prep/data/wav/ISLE_SESS0003_BLOCKD01_01_sprt1.wav',1)
-    print(len(f_c_inp),len(f_cav_inp))
+    # print(len(f_c_inp),len(f_cav_inp))
     data_len = len(f_c_inp)
 
     ## Phrnn dur, Sample_freq, Sylrnn inp ...................................................................................
@@ -490,17 +494,17 @@ if __name__ == "__main__":
     syl_v = []
     for i in range(len(outs)):
         syl_v.append(syl_val(sentence_vectors[i], outs[i], data_len))
-    print(len(syl_v))
+    # print(len(syl_v))
 
     syl_v_np = np.array(syl_v)
     reshaped_arr = syl_v_np.reshape((syl_v_np.shape[0] * syl_v_np.shape[1], syl_v_np.shape[2]))
     syl_v = reshaped_arr.tolist()
-    print("syl_v -- ",len(syl_v))
+    # print("syl_v -- ",len(syl_v))
 
     outs_np = np.array(outs)
     reshaped_arr = outs_np.reshape((outs_np.shape[0] * outs_np.shape[1], 1))
     outs = reshaped_arr.tolist()
-    print("Outs -- ",len(outs))
+    # print("Outs -- ",len(outs))
 
 
 
@@ -523,7 +527,7 @@ if __name__ == "__main__":
     for i in range(len(f_cav_inp)):
         phrnn_seq.append(np.hstack((f_cav_inp[i],outs_ph[i])))
     # phrnn_seq = np.concatenate((f_cav_inp,outs_ph[0]),axis =1)
-    print(phrnn_seq[:2])
+    # print(phrnn_seq[:2])
     phrnn_seq = torch.tensor(phrnn_seq)
     sylrnn_data = torch.tensor(syl_v)
     seq_timesteps = torch.tensor(outs)
