@@ -19,6 +19,20 @@ import nltk
 from nltk.tokenize import word_tokenize
 nltk.download('punkt')
 import numpy as np
+class BottleneckLayer(nn.Module):
+    def __init__(self, input_size, hidden_size):
+        super(BottleneckLayer, self).__init__()
+        
+        # Define the fully connected layers
+        self.fc_mean = nn.Linear(input_size, hidden_size)
+        self.fc_logvar = nn.Linear(input_size, hidden_size)
+        
+    def forward(self, x):
+        # Forward pass through the bottleneck layer
+        mean = self.fc_mean(x)
+        logvar = self.fc_logvar(x)
+        
+        return mean, logvar
 
 class CHIVE(nn.Module):
     def __init__(self, latent_space_dim,input_size):
@@ -37,6 +51,7 @@ class CHIVE(nn.Module):
         self.frnn_c = ClockworkRNNLayer(self.hidden_size, hidden_size =12)
         self.frnn_f = ClockworkRNNLayer(self.hidden_size, hidden_size =1)
         self.sylrnn_dur = ClockworkRNNLayer(self.hidden_size, hidden_size =1)
+        self.bottleneck = BottleneckLayer(input_size=self.hidden_size,hidden_size = self.hidden_size)
 
 
 
@@ -44,6 +59,10 @@ class CHIVE(nn.Module):
         # print(self.parameters)
         self.optimizer = optim.Adam(self.parameters(), lr=0.0001)
         
+    def reparameterize(self, mean, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mean + eps * std
 
     def forward(self, x):
         length = len(x)
@@ -92,15 +111,19 @@ class CHIVE(nn.Module):
 
         ##define bottleneck representations
         bottle_neck_representation = encoder(frnn_inp, phrnn_inp, sylrnn_inp,sample_freq)
-        
-        def decoder(bottle_neck_representation):
+
+        def decoder(z):
             h_sylrnn_decd = torch.zeros(self.hidden_size)
             h_phrnn_decd = torch.zeros(self.hidden_size)
             h_phrnn_dur = torch.zeros(1)
+            kl_loss = torch.zeros(1)
             h_frnn_c = torch.zeros(12)
             h_frnn_f = torch.zeros(1)
             h_sylrnn_dur = torch.zeros(1)
             for i,x_inp in enumerate(bottle_neck_representation):
+                mean, logvar = self.bottleneck(x_inp)
+                x_inp = self.reparameterize(mean, logvar)
+                kl_loss = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp())
                 timestep = i
                 # print(i)
                 ## syllable rate rnn;phone rate rnn; phone rate duration; syllable rate duration;phone rate rnn -> f0,c0
@@ -126,7 +149,7 @@ class CHIVE(nn.Module):
                 ##co values
                 h_frnn_c = self.frnn_c(x = h_phrnn_decd,h_prev = h_frnn_c,timestep=timestep,clock_val=clock_decd_c)
 
-            return h_frnn_f,h_frnn_c,h_phrnn_dur,h_sylrnn_dur
+            return (h_frnn_f,h_frnn_c,h_phrnn_dur,h_sylrnn_dur),kl_loss
                     # self.layers.append(h_sylrnn)
 
         # decoder_out = decoder(bottle_neck_representation)
@@ -159,6 +182,8 @@ class CHIVE(nn.Module):
         dataset = torch.utils.data.TensorDataset(frnn_train,frnn_clock, phrnn_train,phrnn_clock, sylrnn_train,seq_train, y_train)
         train_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
         self.loss_function = nn.MSELoss()
+        text_file = open("train_log.txt", "w")
+        
         for epoch in range(num_epochs):
             
             for i,data in enumerate(train_loader):
@@ -171,11 +196,11 @@ class CHIVE(nn.Module):
                 # print("Shapes--",frnn_batch.shape,phrnn_batch.shape,seq_batch.shape)
                 self.optimizer.zero_grad()
                 length = len(train_loader) -i
-                if length/batch_size >1 :  batch_len = batch_size
+                if length/batch_size >=1 :  batch_len = batch_size
                 else: batch_len = length%batch_size
-                total_loss = Variable(torch.zeros(1), requires_grad=True)
+                total_loss =  Variable(torch.zeros(1), requires_grad=True)
                 for i in range(batch_len):
-                    h_frnn_f,h_frnn_c,h_phrnn_dur,h_sylrnn_dur = self.forward([(frnn_batch,frnn_clock), (phrnn_batch,phrnn_clock), sylrnn_batch,seq_batch])
+                    (h_frnn_f,h_frnn_c,h_phrnn_dur,h_sylrnn_dur),kl_loss = self.forward([(frnn_batch,frnn_clock), (phrnn_batch,phrnn_clock), sylrnn_batch,seq_batch])
                     # print("shapes of outputs",h_frnn_c.view(12).shape,frnn_c_batch[i,:,:].view(12).shape)
                 # print(output.shape,y_batch.shape)
                 
@@ -185,17 +210,33 @@ class CHIVE(nn.Module):
                     loss_ph_dur = self.loss_function(h_phrnn_dur.view(1),phrnn_dur_batch[i].view(1))
                     loss_syl_dur = self.loss_function(h_sylrnn_dur.view(1),seq_batch[i].view(1))
                     total_loss = total_loss.clone()
-                    total_loss += (loss_c+loss_f+loss_ph_dur+loss_syl_dur)/4
+                    total_loss += (loss_c+loss_f+loss_ph_dur+loss_syl_dur+kl_loss)/5
                 total_loss = total_loss/batch_len
                 total_loss.backward()
                 self.optimizer.step()
             print("Epoch--",epoch+1,"| Loss --",total_loss.item())
-
+            text_file.write("Loss: %f price %f" % (total_loss.item(), epoch+1))
+            
+        text_file.close()
 
 
 if __name__ == "__main__":
 
-    
+    def standardize_list(input_list):
+        # Convert the list to a NumPy array
+        data_array = np.array(input_list)
+
+        # Calculate mean and standard deviation
+        mean_value = np.mean(data_array)
+        std_dev = np.std(data_array)
+
+        # Standardize the array
+        standardized_array = (data_array - mean_value) / std_dev
+
+        # Convert the NumPy array back to a list
+        standardized_list = standardized_array
+
+        return standardized_list
     # chive.summary()
 
     # num_samples = 64
@@ -276,21 +317,28 @@ if __name__ == "__main__":
         mfcc_val = librosa.feature.mfcc(y=y, n_mfcc = 12, sr=sr,hop_length= 10)
         mfcc_val = mfcc_val.T
         f0, voiced_flag, voiced_probs = librosa.pyin(y, sr = sr, fmin=librosa.note_to_hz('C1'), fmax=librosa.note_to_hz('C7'),frame_length= 20, hop_length= 10 )
-        
+        frequencies = frequencies.reshape(-1,1)
+        pad_length = len(mfcc_val) -len(frequencies)
+        for i in range(pad_length): frequencies = np.vstack((frequencies,[0]))
+        frequencies = frequencies.reshape(-1,1)
+        # print(frequencies.shape)
         if ph ==1 : 
             # print("ph")
-            reduced_mfcc = average_reduce_ph(mfcc_val,len(frequencies))
+            reduced_mfcc = average_reduce_ph(mfcc_val,4097)
         else: 
             # print("No ph")
-            reduced_mfcc = average_reduce(mfcc_val,len(frequencies))
+            reduced_mfcc = average_reduce(mfcc_val,4097)
         frnn_inp = []
         for i in range(len(reduced_mfcc)):
 
             frnn_inp.append(np.hstack((reduced_mfcc[i],frequencies[i])))
             # frnn_inp.append([vals,frequencies[i]])
-        # print(reduced_mfcc[:5])
-        frequencies = frequencies.reshape(-1,1)
+        # print()
+
+        # print(len(frnn_inp))
         # frnn_inp = np.concatenate((reduced_mfcc,frequencies),axis =1)
+        frnn_inp = standardize_list(frnn_inp)
+        print(frnn_inp.shape)
         return frnn_inp
 
     files  = os.listdir("../Data_prep/data/wav")
@@ -299,11 +347,12 @@ if __name__ == "__main__":
     
     
     for i,file in enumerate(files):
-        # if i == 1: break
+        if i == 7: break
         print(i)
         f_c_inp.append(extract_f_c("../Data_prep/data/wav/"+file,0))
+        # print(len(f_c_inp),len(f_c_inp[0]))
         f_cav_inp.append(extract_f_c("../Data_prep/data/wav/"+file,1))
-        
+    # print(f_c_inp)   
     f_c_inp_np = np.array(f_c_inp)
     reshaped_arr = f_c_inp_np.reshape((f_c_inp_np.shape[0] * f_c_inp_np.shape[1],f_c_inp_np.shape[2] ))
     f_c_inp = reshaped_arr.tolist()
@@ -314,8 +363,10 @@ if __name__ == "__main__":
     # f_c_inp = extract_f_c('../Data_prep/data/wav/ISLE_SESS0003_BLOCKD01_01_sprt1.wav',0)
     # f_cav_inp = extract_f_c('../Data_prep/data/wav/ISLE_SESS0003_BLOCKD01_01_sprt1.wav',1)
     # print(len(f_c_inp),len(f_cav_inp))
+    
     data_len = len(f_c_inp)
 
+    
     ## Phrnn dur, Sample_freq, Sylrnn inp ...................................................................................
 
         # import scipy.io
@@ -395,9 +446,9 @@ if __name__ == "__main__":
     ## To iterate over all the files
     files  = os.listdir("../Data_prep/data/syl")
     outs = []
-    data_len = 1025
+    data_len = 4097
     for i,file in enumerate(files):
-        # if i == 1: break
+        if i == 7: break
         data = loadmat("../Data_prep/data/syl/"+file)
         outs.append(syl_data(data,data_len))
 
@@ -408,9 +459,9 @@ if __name__ == "__main__":
 
     files  = os.listdir("../Data_prep/data/phn")
     outs_ph = []
-    data_len = 1025
+    data_len = 4097
     for i,file in enumerate(files):
-        # if i == 1: break
+        if i == 7: break
         # print(file)
         data = loadmat("../Data_prep/data/phn/"+file)
         outs_ph.append(phn_data(data,data_len))
@@ -420,7 +471,7 @@ if __name__ == "__main__":
     outs_ph_np = np.array(outs_ph)
     reshaped_arr = outs_ph_np.reshape((outs_ph_np.shape[0] * outs_ph_np.shape[1], 1))
     outs_ph = reshaped_arr.tolist()
-    print(len(outs_ph))
+    # print(len(outs_ph))
 
     ### Read from text file and vectorize
     with open('../Data_prep/data/transcript.txt', 'r', encoding='utf-8') as file:
@@ -494,7 +545,8 @@ if __name__ == "__main__":
     syl_v = []
     for i in range(len(outs)):
         syl_v.append(syl_val(sentence_vectors[i], outs[i], data_len))
-    # print(len(syl_v))
+        
+    # p4rint((syl_v[:1]))
 
     syl_v_np = np.array(syl_v)
     reshaped_arr = syl_v_np.reshape((syl_v_np.shape[0] * syl_v_np.shape[1], syl_v_np.shape[2]))
@@ -511,7 +563,7 @@ if __name__ == "__main__":
 
 
     print(len(f_c_inp),len(f_cav_inp),len(syl_v),len(outs_ph),len(outs))
-    num_samples = 14350
+    num_samples = len(f_c_inp)
     clock_frnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
     clock_phrnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
     

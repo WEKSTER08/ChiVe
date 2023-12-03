@@ -10,8 +10,8 @@ from nltk.tokenize import word_tokenize
 nltk.download('punkt')
 import numpy as np
 
-data = loadmat('data/phn1.mat')
-# print(data)
+data = loadmat('data/syl1.mat')
+print(data)
 
 def syl_data(data,data_len):
     duration = []
