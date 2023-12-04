@@ -41,6 +41,7 @@ class CHIVE(nn.Module):
         self.layers = nn.ModuleList()
         
         self.hidden_size = 32
+        self.activation = nn.Tanh()
         self.frnn_layer0 =  ClockworkRNNLayer(input_size[0], hidden_size= self.hidden_size)
         self.frnn_layer1 =  ClockworkRNNLayer(self.hidden_size, hidden_size= self.hidden_size)
         self.phrnn_layer0 =  ClockworkRNNLayer(input_size[1], hidden_size= self.hidden_size)
@@ -88,25 +89,29 @@ class CHIVE(nn.Module):
                 ##Asynchronously adding frame_rate and phone rate rnn layers
                 h_frnn0 = self.frnn_layer0(x=frnn_seq[t],h_prev = h_frnn0,timestep= t, clock_val =frnn_clock[t])
                 h_frnn = self.frnn_layer1(x=h_frnn0,h_prev = h_frnn,timestep= t, clock_val =frnn_clock[t])
+                h_frnn = self.activation(h_frnn)
                 h_phrnn0 = self.phrnn_layer0(x=phrnn_seq[t],h_prev = h_phrnn0,timestep= t, clock_val =phrnn_clock[t])
                 h_phrnn = self.phrnn_layer1(x=h_phrnn0,h_prev = h_phrnn,timestep= t, clock_val =phrnn_clock[t])
+                h_phrnn = self.activation(h_phrnn)
                 ## Passing the frame rate and phone rate rnn layers to the Syllable rate rnn layers along with linguistic features
                 if sample_freq[t] == 1:
                     syl_clock = torch.randint(2, self.hidden_size-2, (1,)).item()
-                    # print("Lens-",(h_frnn.shape), (h_phrnn.shape), (sylrnn_inp[t].shape))
-                    # max_length = max((h_frnn.shape[1]), (h_phrnn.shape[1]), (sylrnn_inp[t].shape[1]))
-                   
+                    # if padding is required
+                        # print("Lens-",(h_frnn.shape), (h_phrnn.shape), (sylrnn_inp[t].shape))
+                        # max_length = max((h_frnn.shape[1]), (h_phrnn.shape[1]), (sylrnn_inp[t].shape[1]))
+                    
 
-                    # h_frnn = F.pad(h_frnn, pad=(0, max_length - (h_frnn.shape[1])))
-                    # h_phrnn = F.pad(h_phrnn, pad=(0, max_length - (h_phrnn.shape[1])))
-                    # # sylrnn_inp[t] = F.pad(sylrnn_inp[t], pad=(0, max_length - (sylrnn_inp[t].shape[1])))
-                    # syl_pad = torch.tensor(np.zeros( max_length - (sylrnn_inp[t].shape[1])))
-                    # syl_inp = torch.cat((sylrnn_inp[t],syl_pad.unsqueeze(-1).t()), dim=1)
-                    # syl_inp = syl_inp.to(torch.float32)
-                    # result_tensor = torch.stack([h_frnn, h_phrnn, syl_inp], dim=0)
-                    ##Adding the frnn output value, phrnn output value and linguistic feature value
+                        # h_frnn = F.pad(h_frnn, pad=(0, max_length - (h_frnn.shape[1])))
+                        # h_phrnn = F.pad(h_phrnn, pad=(0, max_length - (h_phrnn.shape[1])))
+                        # # sylrnn_inp[t] = F.pad(sylrnn_inp[t], pad=(0, max_length - (sylrnn_inp[t].shape[1])))
+                        # syl_pad = torch.tensor(np.zeros( max_length - (sylrnn_inp[t].shape[1])))
+                        # syl_inp = torch.cat((sylrnn_inp[t],syl_pad.unsqueeze(-1).t()), dim=1)
+                        # syl_inp = syl_inp.to(torch.float32)
+                        # result_tensor = torch.stack([h_frnn, h_phrnn, syl_inp], dim=0)
+                        ##Adding the frnn output value, phrnn output value and linguistic feature value
                     result_tensor = h_frnn+h_phrnn+sylrnn_inp[t]
                     h_sylrnn = self.sylrnn_layer(x= result_tensor,h_prev = h_sylrnn,timestep= freq_count, clock_val =syl_clock)
+                    h_sylrnn = self.activation(h_sylrnn)
                     yield h_sylrnn 
 
         ##define bottleneck representations
@@ -135,19 +140,25 @@ class CHIVE(nn.Module):
                     clock_decd = torch.randint(2, self.hidden_size-2, (1,)).item()
                     ##syllable rate rnn
                     h_sylrnn_decd = self.sylrnn_layer(x = x_inp,h_prev= h_sylrnn_decd,timestep = timestep,clock_val=clock_decd)
+                    h_sylrnn_decd = self.activation(h_sylrnn_decd)
                     # print("Shape of this tensor",h_sylrnn_decd.shape,"Shape of input tensor--",x_inp.shape)
                     ##phone rate rnn
                     h_phrnn_decd = self.phrnn_decd(x = h_sylrnn_decd,h_prev = h_phrnn_decd,timestep=timestep,clock_val = clock_decd)
+                    h_phrnn_decd = self.activation(h_phrnn_decd)
                     ##phone rate duration
                     h_phrnn_dur = self.phrnn_dur(x =h_phrnn_decd,h_prev = h_phrnn_dur,timestep=timestep,clock_val = 1)
+                    h_phrnn_dur = self.activation(h_phrnn_dur)
                     ##syllable rate duration
                     h_sylrnn_dur=  self.sylrnn_dur(x = h_sylrnn_decd,h_prev = h_sylrnn_dur,timestep=timestep,clock_val = 1)
+                    h_sylrnn_dur = self.activation(h_sylrnn_dur)
 
                 ##f0 values
                 h_frnn_f = self.frnn_f(x=h_phrnn_decd,h_prev=h_frnn_f,timestep=timestep,clock_val = 1)
+                h_frrn_f = self.activation(h_frnn_f)
                 clock_decd_c = torch.randint(2,10, (1,)).item()
                 ##co values
                 h_frnn_c = self.frnn_c(x = h_phrnn_decd,h_prev = h_frnn_c,timestep=timestep,clock_val=clock_decd_c)
+                h_frrn_c = self.activation(h_frnn_c)
 
             return (h_frnn_f,h_frnn_c,h_phrnn_dur,h_sylrnn_dur),kl_loss
                     # self.layers.append(h_sylrnn)
