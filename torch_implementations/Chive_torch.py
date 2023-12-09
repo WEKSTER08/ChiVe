@@ -16,6 +16,8 @@ import os
 from mat4py import loadmat
 import pprint
 import nltk
+import pysptk
+from scipy.io import wavfile
 from nltk.tokenize import word_tokenize
 nltk.download('punkt')
 import numpy as np
@@ -41,7 +43,7 @@ class CHIVE(nn.Module):
         self.layers = nn.ModuleList()
         
         self.hidden_size = 32
-        self.activation = nn.Tanh()
+        self.activation = nn.GELU()
         self.frnn_layer0 =  ClockworkRNNLayer(input_size[0], hidden_size= self.hidden_size)
         self.frnn_layer1 =  ClockworkRNNLayer(self.hidden_size, hidden_size= self.hidden_size)
         self.phrnn_layer0 =  ClockworkRNNLayer(input_size[1], hidden_size= self.hidden_size)
@@ -146,11 +148,11 @@ class CHIVE(nn.Module):
                     h_phrnn_decd = self.phrnn_decd(x = h_sylrnn_decd,h_prev = h_phrnn_decd,timestep=timestep,clock_val = clock_decd)
                     h_phrnn_decd = self.activation(h_phrnn_decd)
                     ##phone rate duration
-                    h_phrnn_dur = self.phrnn_dur(x =h_phrnn_decd,h_prev = h_phrnn_dur,timestep=timestep,clock_val = 1)
-                    h_phrnn_dur = self.activation(h_phrnn_dur)
-                    ##syllable rate duration
-                    h_sylrnn_dur=  self.sylrnn_dur(x = h_sylrnn_decd,h_prev = h_sylrnn_dur,timestep=timestep,clock_val = 1)
-                    h_sylrnn_dur = self.activation(h_sylrnn_dur)
+                    # h_phrnn_dur = self.phrnn_dur(x =h_phrnn_decd,h_prev = h_phrnn_dur,timestep=timestep,clock_val = 1)
+                    # h_phrnn_dur = self.activation(h_phrnn_dur)
+                    # ##syllable rate duration
+                    # h_sylrnn_dur=  self.sylrnn_dur(x = h_sylrnn_decd,h_prev = h_sylrnn_dur,timestep=timestep,clock_val = 1)
+                    # h_sylrnn_dur = self.activation(h_sylrnn_dur)
 
                 ##f0 values
                 h_frnn_f = self.frnn_f(x=h_phrnn_decd,h_prev=h_frnn_f,timestep=timestep,clock_val = 1)
@@ -160,7 +162,7 @@ class CHIVE(nn.Module):
                 h_frnn_c = self.frnn_c(x = h_phrnn_decd,h_prev = h_frnn_c,timestep=timestep,clock_val=clock_decd_c)
                 h_frrn_c = self.activation(h_frnn_c)
 
-            return (h_frnn_f,h_frnn_c,h_phrnn_dur,h_sylrnn_dur),kl_loss
+            return (h_frnn_f,h_frnn_c),kl_loss
                     # self.layers.append(h_sylrnn)
 
         # decoder_out = decoder(bottle_neck_representation)
@@ -201,7 +203,7 @@ class CHIVE(nn.Module):
                 frnn_batch,frnn_clock, phrnn_batch,phrnn_clock, sylrnn_batch,seq_batch, y_batch = data
                 # print(frnn_batch.shape)
                 frnn_c_batch, frnn_f_batch = frnn_batch[:, :12],frnn_batch[:, 12:]
-                phrnn_dur_batch = phrnn_batch[:,2:]
+                # phrnn_dur_batch = phrnn_batch[:,2:]
                 # print
                 # print(phrnn_dur_batch.shape,frnn_c_batch.shape, frnn_f_batch.shape)
                 # print("Shapes--",frnn_batch.shape,phrnn_batch.shape,seq_batch.shape)
@@ -211,17 +213,17 @@ class CHIVE(nn.Module):
                 else: batch_len = length%batch_size
                 total_loss =  Variable(torch.zeros(1), requires_grad=True)
                 for i in range(batch_len):
-                    (h_frnn_f,h_frnn_c,h_phrnn_dur,h_sylrnn_dur),kl_loss = self.forward([(frnn_batch,frnn_clock), (phrnn_batch,phrnn_clock), sylrnn_batch,seq_batch])
+                    (h_frnn_f,h_frnn_c),kl_loss = self.forward([(frnn_batch,frnn_clock), (phrnn_batch,phrnn_clock), sylrnn_batch,seq_batch])
                     # print("shapes of outputs",h_frnn_c.view(12).shape,frnn_c_batch[i,:,:].view(12).shape)
                 # print(output.shape,y_batch.shape)
                 
 
                     loss_f = self.loss_function(h_frnn_f.view(1),frnn_f_batch[i].view(1))
                     loss_c = self.loss_function(h_frnn_c.view(12),frnn_c_batch[i].view(12))
-                    loss_ph_dur = self.loss_function(h_phrnn_dur.view(1),phrnn_dur_batch[i].view(1))
-                    loss_syl_dur = self.loss_function(h_sylrnn_dur.view(1),seq_batch[i].view(1))
+                    # loss_ph_dur = self.loss_function(h_phrnn_dur.view(1),phrnn_dur_batch[i].view(1))
+                    # loss_syl_dur = self.loss_function(h_sylrnn_dur.view(1),seq_batch[i].view(1))
                     total_loss = total_loss.clone()
-                    total_loss += (loss_c+loss_f+loss_ph_dur+loss_syl_dur+kl_loss)/5
+                    total_loss += (loss_c+loss_f+kl_loss)/3
                 total_loss = total_loss/batch_len
                 total_loss.backward()
                 self.optimizer.step()
@@ -266,27 +268,6 @@ if __name__ == "__main__":
         subset = numbers[:subset_size]
         return subset
 
-    # frnn_seq = torch.tensor(np.random.rand(num_samples,1, 13))
-    # clock_frnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
-    # phrnn_seq = torch.tensor(np.random.rand(num_samples,1, 3))
-    # clock_phrnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
-    # sylrnn_val = torch.tensor(np.random.rand(int(num_samples - num_samples/2),1,1))
-    # seq_data = generate_non_repeating_subset(0,int(num_samples), int(num_samples/2))
-    # seq_timesteps = torch.zeros(num_samples)
-    # sylrnn_data = torch.zeros_like(frnn_seq) 
-    # syl_seq_count = 0
-    # for i in range(len(seq_timesteps)):
-    #     if i in seq_data:
-    #         sylrnn_data[i] =  torch.tensor(np.random.rand(1,1, 13))
-    #         seq_timesteps[i]=torch.tensor(1)
-    #         syl_seq_count+=1
-    #     else: seq_timesteps[i]=torch.tensor(0)
-    # print(seq_timesteps)
-
-    # print(frnn_seq)
-    # print(len(frnn_seq),len(phrnn_seq),len(sylrnn_data),(seq_timesteps[99]),len(clock_frnn),len(clock_phrnn),len(sylrnn_val),len(seq_data))
-
-
     ### Real data prep 
 
 
@@ -317,7 +298,8 @@ if __name__ == "__main__":
     # Load the audio file
     # file_path = 'path/to/your/audio/file.wav'
     def extract_f_c(data_path,ph):
-        y, sr = librosa.load(data_path,sr=16000,)
+        y, sr = librosa.load(data_path,sr=16000)
+        sampling_rate, x = wavfile.read(data_path)
 
         # Compute the short-time Fourier transform (STFT)
         D = librosa.amplitude_to_db(librosa.stft(y), ref=np.max)
@@ -327,22 +309,25 @@ if __name__ == "__main__":
 
         mfcc_val = librosa.feature.mfcc(y=y, n_mfcc = 12, sr=sr,hop_length= 10)
         mfcc_val = mfcc_val.T
-        f0, voiced_flag, voiced_probs = librosa.pyin(y, sr = sr, fmin=librosa.note_to_hz('C1'), fmax=librosa.note_to_hz('C7'),frame_length= 20, hop_length= 10 )
+        f0 = pysptk.swipe(x.astype(float), fs=sampling_rate/2, hopsize=10, min=60, max=240)
+        mfcc_val = mfcc_val[:len(f0)]
+        # f0, voiced_flag, voiced_probs = librosa.pyin(y, sr = sr, fmin=librosa.note_to_hz('C1'), fmax=librosa.note_to_hz('C7'),frame_length= 20, hop_length= 10 )
         frequencies = frequencies.reshape(-1,1)
+        print(len(f0),len(mfcc_val))
         pad_length = len(mfcc_val) -len(frequencies)
-        for i in range(pad_length): frequencies = np.vstack((frequencies,[0]))
+        # for i in range(pad_length): frequencies = np.vstack((frequencies,[0]))
         frequencies = frequencies.reshape(-1,1)
         # print(frequencies.shape)
         if ph ==1 : 
             # print("ph")
-            reduced_mfcc = average_reduce_ph(mfcc_val,4097)
+            reduced_mfcc = average_reduce_ph(mfcc_val,4096)
         else: 
             # print("No ph")
-            reduced_mfcc = average_reduce(mfcc_val,4097)
+            reduced_mfcc = average_reduce(mfcc_val,4096)
         frnn_inp = []
         for i in range(len(reduced_mfcc)):
 
-            frnn_inp.append(np.hstack((reduced_mfcc[i],frequencies[i])))
+            frnn_inp.append(np.hstack((reduced_mfcc[i],f0[i])))
             # frnn_inp.append([vals,frequencies[i]])
         # print()
 
@@ -377,14 +362,6 @@ if __name__ == "__main__":
     
     data_len = len(f_c_inp)
 
-    
-    ## Phrnn dur, Sample_freq, Sylrnn inp ...................................................................................
-
-        # import scipy.io
-    # mat = scipy.io.loadmat('data/syl1.mat')
-    # import pandas as pd
-    # print(mat)
-  
 
     
     # print(data)
@@ -457,7 +434,7 @@ if __name__ == "__main__":
     ## To iterate over all the files
     files  = os.listdir("../Data_prep/data/syl")
     outs = []
-    data_len = 4097
+    data_len = 4096
     for i,file in enumerate(files):
         if i == 7: break
         data = loadmat("../Data_prep/data/syl/"+file)
@@ -470,7 +447,7 @@ if __name__ == "__main__":
 
     files  = os.listdir("../Data_prep/data/phn")
     outs_ph = []
-    data_len = 4097
+    data_len = 4096
     for i,file in enumerate(files):
         if i == 7: break
         # print(file)
@@ -600,3 +577,28 @@ if __name__ == "__main__":
     print(f"Number of parameters: {total_params}")
     # chive.summary()
     chive.train(x_train=[frnn_seq,clock_frnn, phrnn_seq,clock_phrnn,sylrnn_data,seq_timesteps], y_train=dummy_targets, batch_size=16, num_epochs=16)
+
+
+
+
+
+## To generate random data
+    # frnn_seq = torch.tensor(np.random.rand(num_samples,1, 13))
+    # clock_frnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
+    # phrnn_seq = torch.tensor(np.random.rand(num_samples,1, 3))
+    # clock_phrnn = torch.tensor([np.random.uniform(1, 6) for i in range(num_samples)])
+    # sylrnn_val = torch.tensor(np.random.rand(int(num_samples - num_samples/2),1,1))
+    # seq_data = generate_non_repeating_subset(0,int(num_samples), int(num_samples/2))
+    # seq_timesteps = torch.zeros(num_samples)
+    # sylrnn_data = torch.zeros_like(frnn_seq) 
+    # syl_seq_count = 0
+    # for i in range(len(seq_timesteps)):
+    #     if i in seq_data:
+    #         sylrnn_data[i] =  torch.tensor(np.random.rand(1,1, 13))
+    #         seq_timesteps[i]=torch.tensor(1)
+    #         syl_seq_count+=1
+    #     else: seq_timesteps[i]=torch.tensor(0)
+    # print(seq_timesteps)
+
+    # print(frnn_seq)
+    # print(len(frnn_seq),len(phrnn_seq),len(sylrnn_data),(seq_timesteps[99]),len(clock_frnn),len(clock_phrnn),len(sylrnn_val),len(seq_data))

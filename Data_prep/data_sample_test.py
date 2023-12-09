@@ -163,5 +163,3 @@ print(len(syl_v))
 
 
 
-
-
