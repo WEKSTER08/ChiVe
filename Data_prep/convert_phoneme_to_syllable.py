@@ -1,8 +1,8 @@
 1. #converting phonetics to syllables and generating an output
 import scipy.io
 # import python3
-import syllabifier
-# from python.syllabify import syllabifier
+# import syllabifier
+from python.syllabify import syllabifier
 import os
 # from python.syllabify import syllabifier
 
