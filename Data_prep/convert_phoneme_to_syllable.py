@@ -1,10 +1,12 @@
 1. #converting phonetics to syllables and generating an output
 import scipy.io
-from python.syllabify import syllabifier
+# import python3
+import syllabifier
+# from python.syllabify import syllabifier
 import os
-from python.syllabify import syllabifier
+# from python.syllabify import syllabifier
 
-folder_path = 'FA_result'  # Replace with the actual folder path
+folder_path = 'data/phone'  # Replace with the actual folder path
 
 # Get a list of all files in the folder
 file_list = os.listdir(folder_path)
@@ -86,7 +88,7 @@ for file_name in file_list:
                             ss = ss[:-1]
                             st.append(ss)
                     
-                    h_output = "C:/Users/HP/p2tk-code-r18/p2tk-code-r18/output1/" + file_name  # Replace with the desired output file path
+                    h_output = "data/syllable" + file_name  # Replace with the desired output file path
 #                     print(h_output)
 #                     with open(h_output, "w") as output_file:
                     for i in range(min(len(syllables), len(st))):

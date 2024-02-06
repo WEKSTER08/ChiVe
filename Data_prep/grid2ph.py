@@ -38,23 +38,24 @@
 #     # Access intervals within the tier
 #     for interval in tier.entryList:
 #         print(f"Interval [{interval.start:.4f}, {interval.end:.4f}]: {interval.label}")
-
+print("HI")
 import sys
 import textgrids
 
-for arg in sys.argv[1:]:
-    # Try to open the file as textgrid
-    try:
-        grid = textgrids.TextGrid(arg)
-    # Discard and try the next one
-    except:
-        continue
+# Open the output file for writing
+with open("phones_1.txt", "w") as output_file:
+    # Iterate through each command-line argument
+    for arg in sys.argv[1:]:
+        # Try to open the file as textgrid
+        try:
+            grid = textgrids.TextGrid(arg)
+        # Discard and try the next one
+        except:
+            continue
 
-    # Assume "syllables" is the name of the tier
-    # containing syllable information
-    for syll in grid['phones']:
-        # Convert Praat to Unicode in the label
-        label = syll.text.transcode()
-        # Print label and syllable duration, CSV-like
-        print(syll.xmin,syll.xmax)
-        # print('"{}";{}'.format(label, syll))
+        # Assume "phones" is the name of the tier containing phone information
+        for phone in grid['phones']:
+            # Convert Praat to Unicode in the label
+            label = phone.text.transcode()
+            # Write xmin, xmax, and label to the output file
+            output_file.write(f"{phone.xmin} {phone.xmax} {label}\n")
