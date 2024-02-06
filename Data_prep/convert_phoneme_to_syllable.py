@@ -2,7 +2,7 @@
 import scipy.io
 # import python3
 # import syllabifier
-from python.syllabify import syllabifier
+from syllabify import syllabifier
 import os
 # from python.syllabify import syllabifier
 
@@ -104,7 +104,7 @@ for file_name in file_list:
                             transcript = st[i]
 
                             output_line = f"{stress:<2}{final_st[i]:>7}{final_end[i]:>7} {transcript:>8}"
-#                             output_file.write(output_line + "\n")
+                            # output_file.write(output_line + "\n")
                             print(output_line)
 
                 except ValueError as e:
