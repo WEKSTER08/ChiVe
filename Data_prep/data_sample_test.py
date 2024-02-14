@@ -10,8 +10,72 @@ from nltk.tokenize import word_tokenize
 nltk.download('punkt')
 import numpy as np
 
-data = loadmat('data/syl1.mat')
-print(data)
+# data = loadmat('data/syl1.mat')
+with open("data/phone/MSP-PODCAST_0003_0305.txt", "r") as lb_file:
+    data = lb_file.readlines()
+# print(data)
+
+
+def syl_data_em(data,data_len):
+    duration = []
+    sylStart = []
+    for i in range(len(data)):
+        dt = data[i].split(' ')
+        # print(dt)
+        duration.append(round(float(dt[1]) - float(dt[0]),2))
+        sylStart.append(round(float(dt[0]),2))
+    # data['spurtSylTimes'] = duration
+    # data['sylStart'] = sylStart
+    out = []
+    count=0
+    factor = int(data_len/(sylStart[-1]*100))
+    cut_off = len(sylStart)
+    # print(factor)
+    for i in range(data_len):
+        if count >= cut_off : count -= 1
+        if int(sylStart[count]*100*factor) == i:
+            count+=1
+            out.append(1)
+        else: out.append(0)
+    # print(data)
+    return out
+# print("Test let's see -- ",syl_data(data,4096))
+
+def phn_data(data,data_len):
+
+    duration = []
+    phnStart = []
+    for i in range(len(data)):
+        dt = data[i].split(' ')
+        # print(dt)
+        duration.append(round(float(dt[1]) - float(dt[0]),2))
+        phnStart.append(round(float(dt[0]),2))
+    print(duration,"\n",phnStart)
+    out_ph = []
+    count_ph = 0
+    factor = int(data_len/(phnStart[-1]*100))
+    cut_off = len(phnStart)
+    # (print(cut_off))
+    # print(factor,phnStart[-1])
+    for i in range(data_len):
+        
+        if int(phnStart[count_ph]*100*factor) == i:
+            # print(data['phnStart'][count_ph]*100*factor,i)
+            if(count_ph == cut_off-1) : 
+                # print(i)
+                out_ph.append(duration[count_ph-1]*1000)
+                continue
+            else :
+                count_ph+=1
+                # print(i,data['phnTimes'][count_ph-1]*1000)
+                out_ph.append(duration[count_ph-1]*1000)
+
+        else:
+            out_ph.append(duration[count_ph-1]*1000)
+            # print(i)
+    # print()
+    return out_ph
+print("Test let's see -- ",phn_data(data,4096))
 
 def syl_data(data,data_len):
     duration = []
@@ -84,7 +148,7 @@ for i,file in enumerate(files):
     data = loadmat("data/syl/"+file)
     outs.append(syl_data(data,data_len))
 
-print(len(outs[0]))
+# print(len(outs[0]))
 
 ### Read from text file and vectorize
 with open('data/transcript.txt', 'r', encoding='utf-8') as file:
@@ -157,8 +221,8 @@ def syl_val(vector,sample_freq,data_len):
     return out_vec
 
 
-syl_v = syl_val(sentence_vectors[0],outs[0],data_len)
-print(len(syl_v))
+# syl_v = syl_val(sentence_vectors[0],outs[0],data_len)
+# print(len(syl_v))
 
 
 

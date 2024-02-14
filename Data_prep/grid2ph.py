@@ -38,24 +38,31 @@
 #     # Access intervals within the tier
 #     for interval in tier.entryList:
 #         print(f"Interval [{interval.start:.4f}, {interval.end:.4f}]: {interval.label}")
-print("HI")
+# print("HI")
 import sys
 import textgrids
-
+import os
+import re
 # Open the output file for writing
-with open("phones_1.txt", "w") as output_file:
-    # Iterate through each command-line argument
-    for arg in sys.argv[1:]:
-        # Try to open the file as textgrid
-        try:
-            grid = textgrids.TextGrid(arg)
-        # Discard and try the next one
-        except:
-            continue
 
-        # Assume "phones" is the name of the tier containing phone information
+# Iterate through each command-line argument
+align_files = os.listdir("force_aligned")
+for grids in align_files:
+    grid_name = "force_aligned/" + grids
+    # Try to open the file as textgrid
+    try:
+        grid = textgrids.TextGrid(grid_name)
+    # Discard and try the next one
+    except:
+        continue
+    phone_name  = re.sub(r'\.TextGrid$', '', grids)
+    phone_name = "data/phone/" + phone_name + ".txt"
+    # print(phone_name)
+    with open(phone_name, "w") as output_file:
+    # Assume "phones" is the name of the tier containing phone information
         for phone in grid['phones']:
             # Convert Praat to Unicode in the label
             label = phone.text.transcode()
             # Write xmin, xmax, and label to the output file
             output_file.write(f"{phone.xmin} {phone.xmax} {label}\n")
+    output_file.close()   

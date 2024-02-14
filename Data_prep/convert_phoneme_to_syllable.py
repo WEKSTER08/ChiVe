@@ -88,10 +88,10 @@ for file_name in file_list:
                             ss = ss[:-1]
                             st.append(ss)
                     
-                    h_output = "data/syllable" + file_name  # Replace with the desired output file path
-#                     print(h_output)
-#                     with open(h_output, "w") as output_file:
-                    for i in range(min(len(syllables), len(st))):
+                    h_output = "data/syllable/" + file_name  # Replace with the desired output file path
+                    print(h_output)
+                    with open(h_output, "w") as output_file:
+                        for i in range(min(len(syllables), len(st))):
                             stress = syllables[i][0]
                             onset = syllables[i][1]
                             nucleus = syllables[i][2]
@@ -102,9 +102,12 @@ for file_name in file_list:
 
                             stress = '1' if stress else '0'
                             transcript = st[i]
+                            ## With stress annotations
+                            # output_line = f"{stress:<2}{final_st[i]:>7}{final_end[i]:>7} {transcript:>8}"
+                            ## Without stress annotations
+                            output_line = f"{final_st[i]} {final_end[i]} {transcript}"
 
-                            output_line = f"{stress:<2}{final_st[i]:>7}{final_end[i]:>7} {transcript:>8}"
-                            # output_file.write(output_line + "\n")
+                            output_file.write(output_line + "\n")
                             print(output_line)
 
                 except ValueError as e:
