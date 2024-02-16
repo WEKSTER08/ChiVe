@@ -2,7 +2,7 @@
 import scipy.io
 # import python3
 # import syllabifier
-from syllabify import syllabifier
+from data.syllabify import syllabifier
 import os
 # from python.syllabify import syllabifier
 
