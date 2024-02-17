@@ -49,6 +49,7 @@ class CHIVE(nn.Module):
         self.phrnn_layer0 =  ClockworkRNNLayer(input_size[1], hidden_size= self.hidden_size)
         self.phrnn_layer1 =  ClockworkRNNLayer(self.hidden_size, hidden_size= self.hidden_size)
         self.sylrnn_layer =  ClockworkRNNLayer(input_size[2], hidden_size =self.hidden_size)
+        self.wrnn_layer =  ClockworkRNNLayer(input_size[2], hidden_size =self.hidden_size)
         self.phrnn_decd = ClockworkRNNLayer(self.hidden_size, hidden_size =self.hidden_size)
         self.phrnn_dur = ClockworkRNNLayer(self.hidden_size, hidden_size =1)
         self.frnn_c = ClockworkRNNLayer(self.hidden_size, hidden_size =12)
@@ -85,6 +86,7 @@ class CHIVE(nn.Module):
             h_phrnn0 = torch.zeros(self.hidden_size)
 
             h_sylrnn = torch.zeros(self.hidden_size)
+            h_wrnn = torch.zeros(self.hidden_size)
             freq_count = 0
             # self.frnn_layer = ClockworkRNNLayer(input_size=frnn_seq[0].size(),hidden_size=self.hidden_size,clock_val=)
             for t in range(len(sample_freq)):
@@ -96,7 +98,12 @@ class CHIVE(nn.Module):
                 h_phrnn = self.phrnn_layer1(x=h_phrnn0,h_prev = h_phrnn,timestep= t, clock_val =phrnn_clock[t])
                 h_phrnn = self.activation(h_phrnn)
                 ## Passing the frame rate and phone rate rnn layers to the Syllable rate rnn layers along with linguistic features
-                if sample_freq[t] == 1:
+                if sample_freq[t] == 1 or sample_freq[t] == 2:
+                    #resetting states
+                    h_frnn = torch.zeros(self.hidden_size)
+                    h_frnn0 = torch.zeros(self.hidden_size)
+                    h_phrnn = torch.zeros(self.hidden_size)
+                    h_phrnn0 = torch.zeros(self.hidden_size)
                     syl_clock = torch.randint(2, self.hidden_size-2, (1,)).item()
                     # if padding is required
                         # print("Lens-",(h_frnn.shape), (h_phrnn.shape), (sylrnn_inp[t].shape))
@@ -114,7 +121,10 @@ class CHIVE(nn.Module):
                     result_tensor = h_frnn+h_phrnn+sylrnn_inp[t]
                     h_sylrnn = self.sylrnn_layer(x= result_tensor,h_prev = h_sylrnn,timestep= freq_count, clock_val =syl_clock)
                     h_sylrnn = self.activation(h_sylrnn)
-                    yield h_sylrnn 
+                    if sample_freq[t] == 2 :
+                        h_wrnn = self.wrnn_layer(x= result_tensor,h_prev = h_sylrnn,timestep= freq_count, clock_val =syl_clock)
+                        h_wrnn = self.activation(h_wrnn)
+                        yield h_wrnn 
 
         ##define bottleneck representations
         bottle_neck_representation = encoder(frnn_inp, phrnn_inp, sylrnn_inp,sample_freq)
@@ -365,30 +375,46 @@ if __name__ == "__main__":
 
     
         # print(data)
-    def syl_data(data,data_len):
+    def syl_data(data,w_data,data_len):
         duration = []
         sylStart = []
+        w_duration = []
+        w_sylStart = []
         for i in range(len(data)):
             dt = data[i].split(' ')
             # print(dt)
             duration.append(round(float(dt[1]) - float(dt[0]),2))
             sylStart.append(round(float(dt[0]),2))
+        
+        for i in range(len(w_data)):
+            dt = w_data[i].split(' ')
+            # print(dt)
+            w_duration.append(round(float(dt[1]) - float(dt[0]),2))
+            w_sylStart.append(round(float(dt[0]),2))
         # data['spurtSylTimes'] = duration
         # data['sylStart'] = sylStart
         out = []
         count=0
+        w_count =0
+        # print("word_start---",w_sylStart,"\n")
+        # print("syl_start---",sylStart)
+
         factor = int(data_len/(sylStart[-1]*100))
+        w_factor = int(data_len/(w_sylStart[-1]*100))
         cut_off = len(sylStart)
         # print(factor)
         for i in range(data_len):
             if count >= cut_off : count -= 1
             if int(sylStart[count]*100*factor) == i:
                 count+=1
-                out.append(1)
+                
+                if int(w_sylStart[w_count]*100*w_factor) == i:
+                    w_count+=1
+                    out.append(2)
+                else : out.append(1)            
             else: out.append(0)
         # print(data)
         return out
-        # print(data)
 
 
     def phn_data(data,data_len):
@@ -437,8 +463,10 @@ if __name__ == "__main__":
         if i == 7: break
         with open("../Data_prep/data/syllable/"+file, "r") as outfile:
             data = outfile.readlines()
+        with open("../Data_prep/data/words/"+file, "r") as w_file:
+            w_data = w_file.readlines()            
         # data = loadmat("../Data_prep/data/syllable/"+file)
-        outs.append(syl_data(data,data_len))
+        outs.append(syl_data(data,w_data,data_len))
         outfile.close()
 
     # print(outs)

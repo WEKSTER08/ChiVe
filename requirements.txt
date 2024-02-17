@@ -3,3 +3,5 @@ tensorflow
 mat4py
 librosa
 numpy
+scikit_learn
+praat-textgrids
